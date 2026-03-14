@@ -136,7 +136,7 @@ class ChartSpecGenerator:
 
         return ChartSpec(
             chart_id=f"chart_{uuid4().hex[:8]}",
-            chart_type="bar",
+            chart_type="histogram",
             title=f"Distribución de {column} (Histograma)",
             data=data,
             x_axis=AxisSpec(key="bin", label="Rango", type="categorical"),

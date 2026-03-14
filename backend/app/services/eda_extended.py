@@ -23,13 +23,28 @@ class EDAExtendedService:
         for i in range(len(cols)):
             for j in range(i + 1, len(cols)):
                 col1, col2 = cols[i], cols[j]
-                val = numeric_df[col1].corr(numeric_df[col2])
-                if not pd.isna(val) and abs(val) > 0.7:
-                    classification = "muy fuerte" if abs(val) > 0.9 else "fuerte"
+                
+                # Obtener series sin NaNs sincronizadas
+                v1 = numeric_df[col1]
+                v2 = numeric_df[col2]
+                mask = ~v1.isna() & ~v2.isna()
+                v1_sync = v1[mask]
+                v2_sync = v2[mask]
+                
+                if len(v1_sync) < 2:
+                    continue
+                
+                # Pearson r y p-value usando scipy
+                r, p_value = stats.pearsonr(v1_sync, v2_sync)
+                
+                if not pd.isna(r) and abs(r) > 0.7:
+                    classification = "muy fuerte" if abs(r) > 0.9 else "fuerte"
                     strong_correlations.append({
                         "col1": col1,
                         "col2": col2,
-                        "value": round(float(val), 3),
+                        "correlation": round(float(r), 3),
+                        "p_value": round(float(p_value), 5),
+                        "significant": bool(p_value < 0.05),
                         "classification": classification
                     })
         
