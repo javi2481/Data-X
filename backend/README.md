@@ -1,27 +1,26 @@
-# Data-X Backend API
+# Data-X Backend API (Arquitectura v3.0 Medallion)
 
-Backend oficial de Data-X, una plataforma inteligente para el análisis y visualización de datos estructurados. Construido con Python, FastAPI, MongoDB y LiteLLM.
+Backend oficial de Data-X, una plataforma inteligente para el análisis y visualización de datos estructurados. Implementa una arquitectura Medallion (Bronze/Silver) para el procesamiento determinístico de datos antes de la interpretación.
 
-## Características principales
+## Características principales (Corte 1)
 
-- **Ingesta Docling-First**: Pipeline unificado para procesar archivos (CSV inicialmente) con extracción inteligente de tablas.
-- **Análisis Estadístico**: Perfilado detallado por columna y motor de estadísticas descriptivas.
-- **Inteligencia Artificial**: Resúmenes y respuestas generadas con LLMs mediante LiteLLM.
-- **Visualización**: Generación de configuraciones de gráficos compatibles con Recharts.
-- **Observabilidad**: Instrumentación nativa con OpenTelemetry y logs estructurados.
+- **Arquitectura Medallion**: Flujo de datos organizado en capas (Bronze: Raw, Silver: Profiling/Findings).
+- **Finding-Centric**: El análisis se basa en "Hallazgos" (Findings) detectados automáticamente.
+- **ChartSpecs Agnósticos**: Generación de especificaciones de gráficos listas para ser renderizadas por cualquier librería (compatible con Recharts en el frontend).
+- **Ingesta Docling-First**: Pipeline unificado para procesar CSVs con extracción inteligente y fallback a Pandas.
+- **Observabilidad**: Instrumentación nativa con OpenTelemetry e índices optimizados en MongoDB.
 
 ## Requisitos previos
 
-- Python 3.10+
+- Python 3.11+
 - MongoDB (instancia local o Atlas)
-- Clave de API para proveedores de LLM (OpenAI, Anthropic, etc.) si se desea usar LiteLLM completo.
 
 ## Instalación
 
 1. Crear un entorno virtual:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # En Windows: venv\Scripts\activate
+   source venv/bin/activate  # En Windows: .\venv\Scripts\activate
    ```
 
 2. Instalar dependencias:
@@ -29,10 +28,11 @@ Backend oficial de Data-X, una plataforma inteligente para el análisis y visual
    pip install -r requirements.txt
    ```
 
-3. Configurar variables de entorno:
-   ```bash
-   cp .env.example .env
-   # Editar .env con tus credenciales de MongoDB y API Keys
+3. Configurar variables de entorno (.env):
+   ```env
+   MONGODB_URI=mongodb://...
+   MONGODB_DB=datax
+   CORS_ORIGINS=["http://localhost:3000"]
    ```
 
 ## Ejecución
@@ -47,32 +47,41 @@ La documentación Swagger UI en `http://localhost:8000/docs`.
 ## Endpoints Principales
 
 ### 1. Health Check
-`GET /health`
+`GET /api/health`
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/api/health
 ```
 
-### 2. Crear Sesión (Upload)
-`POST /sessions` - Sube un CSV y crea una sesión de análisis.
+### 2. Crear Sesión (Bronze -> Silver)
+`POST /api/sessions` - Sube un CSV, ejecuta el perfilado y detecta hallazgos.
 ```bash
-curl -X POST http://localhost:8000/sessions -F "file=@ruta/a/tu/archivo.csv"
+curl -X POST http://localhost:8000/api/sessions -F "file=@ruta/archivo.csv"
 ```
 
-### 3. Analizar Sesión
-`POST /analyze` - Ejecuta una consulta sobre los datos de la sesión.
+### 3. Obtener Reporte Completo
+`GET /api/sessions/{id}/report` - Devuelve el AnalysisReport con findings y charts.
 ```bash
-curl -X POST http://localhost:8000/analyze \
+curl http://localhost:8000/api/sessions/TU_SESSION_ID/report
+```
+
+### 4. Análisis (Compatibilidad)
+`POST /api/analyze` - Consulta interactiva sobre la sesión.
+```bash
+curl -X POST http://localhost:8000/api/analyze \
      -H "Content-Type: application/json" \
-     -d '{"session_id": "TU_SESSION_ID", "query": "Dame un resumen de los datos"}'
+     -d '{"session_id": "TU_ID", "query": "Analiza esto"}'
 ```
 
-## Servicios del Backend
+## Servicios del Backend (Corte 1)
 
-- **IngestService**: Procesa archivos usando Docling o Pandas como fallback.
-- **NormalizationService**: Limpia y estandariza nombres de columnas y tipos de datos.
-- **ValidationService**: Detecta problemas de calidad en el dataset.
-- **ProfilerService**: Genera estadísticas detalladas por cada columna.
-- **StatsEngine**: Calcula correlaciones, outliers y métricas avanzadas.
-- **LLMService**: Genera interpretaciones narrativas usando LiteLLM.
-- **ArtifactBuilder**: Construye la respuesta visual (tablas, gráficos, métricas).
-- **ProvenanceService**: Rastrea el historial de cambios en cada sesión.
+- **IngestService**: Pipeline dual Docling/Pandas con auto-detección de separador.
+- **FindingBuilder**: Corazón del análisis. Detecta nulos, duplicados, cardinalidad y estadísticas.
+- **ChartSpecGenerator**: Transforma hallazgos y datos en especificaciones visuales.
+- **NormalizationService**: Limpia headers (unicodedata) y coerciona tipos.
+- **ProfilerService**: Perfilado estadístico profundo por columna (NaN-safe).
+- **DoclingQualityGate**: Evalúa la confianza de la extracción de datos.
+
+## Fuera de Scope (Corte 1)
+- **LiteLLM**: Desactivado (Corte 2).
+- **Formatos PDF/XLSX**: Soporte limitado (Corte 2).
+- **Análisis Multivariante**: (Corte 2).

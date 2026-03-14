@@ -6,7 +6,11 @@ from app.repositories.mongo import session_repo
 
 router = APIRouter()
 
-@router.get("/{session_id}/report", response_model=AnalysisReport)
+@router.get("/{session_id}/report", 
+    response_model=AnalysisReport,
+    summary="Obtener reporte completo",
+    description="Genera y retorna un AnalysisReport completo que incluye hallazgos, perfiles de columna y especificaciones de gráficos."
+)
 async def get_analysis_report(session_id: str):
     """
     Devuelve el AnalysisReport completo a partir de los datos Silver.

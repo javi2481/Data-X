@@ -24,7 +24,12 @@ quality_gate = DoclingQualityGate()
 finding_builder = FindingBuilder()
 chart_spec_generator = ChartSpecGenerator()
 
-@router.post("", response_model=SessionResponse, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
+@router.post("", 
+    response_model=SessionResponse, 
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Crear nueva sesión de análisis",
+    description="Carga un archivo CSV, ejecuta el pipeline Medallion (Bronze/Silver) y genera los hallazgos iniciales."
+)
 async def create_session(file: UploadFile = File(...)):
     """
     Crea una sesión a partir de un archivo subido.
@@ -170,7 +175,11 @@ async def create_session(file: UploadFile = File(...)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-@router.get("/{session_id}", response_model=SessionResponse)
+@router.get("/{session_id}", 
+    response_model=SessionResponse,
+    summary="Obtener información de sesión",
+    description="Recupera los metadatos y el resumen del estado actual de una sesión específica."
+)
 async def get_session(session_id: str):
     session = await session_repo.get_session(session_id)
     if not session:

@@ -6,7 +6,12 @@ from app.repositories.mongo import session_repo
 
 router = APIRouter()
 
-@router.post("", response_model=AnalyzeResponse, responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}})
+@router.post("", 
+    response_model=AnalyzeResponse, 
+    responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
+    summary="Análisis interactivo (Legacy/Compat)",
+    description="Permite realizar consultas sobre el dataset. En Corte 1 devuelve resultados estáticos o el reporte completo para mantener compatibilidad con el frontend."
+)
 async def analyze(request: AnalyzeRequest):
     """
     Ejecuta un análisis sobre el dataset de la sesión.
