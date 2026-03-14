@@ -2,14 +2,13 @@
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import uuid
-from typing import Dict, Any
+from typing import Any
 
 from app.schemas.session import SessionResponse
 from app.schemas.analyze import ErrorResponse
 from app.schemas.medallion import BronzeRecord, SilverRecord, DatasetOverview, ColumnProfile
 from app.services.ingest import IngestService
 from app.services.normalization import NormalizationService
-from app.services.validation import ValidationService
 from app.services.profiler import ProfilerService
 from app.services.docling_quality_gate import DoclingQualityGate
 from app.services.finding_builder import FindingBuilder
@@ -20,7 +19,6 @@ router = APIRouter()
 
 ingest_service = IngestService()
 normalization_service = NormalizationService()
-validation_service = ValidationService()
 profiler_service = ProfilerService()
 quality_gate = DoclingQualityGate()
 finding_builder = FindingBuilder()

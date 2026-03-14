@@ -2,6 +2,7 @@
 from typing import Any, List
 from app.repositories.mongo import session_repo
 
+# DEPRECATED: La trazabilidad ahora se gestiona en MedallionRecords (Bronze/Silver) en v3.0.
 class ProvenanceService:
     async def add_step(self, session_id: str, step_name: str, details: dict[str, Any] = None):
         """

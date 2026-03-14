@@ -1,6 +1,7 @@
 ﻿from pandas import DataFrame
 from typing import Any
 
+# DEPRECATED: Este servicio ha sido reemplazado por FindingBuilder y ChartSpecGenerator en v3.0.
 class ArtifactBuilder:
     def build_table_artifact(self, df: DataFrame, title: str, max_rows: int = 50) -> dict[str, Any]:
         """

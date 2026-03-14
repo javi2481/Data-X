@@ -14,6 +14,15 @@ async def lifespan(app: FastAPI):
     # Startup
     setup_telemetry(app)
     await db.connect_to_db()
+    
+    # Crear índices
+    if db.db is not None:
+        await db.db.sessions.create_index("session_id", unique=True)
+        await db.db.bronze.create_index("session_id")
+        await db.db.silver.create_index("session_id")
+        await db.db.sessions.create_index([("created_at", -1)])
+        print("🚀 Índices de MongoDB creados/verificados")
+        
     yield
     # Shutdown
     await db.close_db_connection()

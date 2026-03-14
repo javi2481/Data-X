@@ -1,6 +1,7 @@
 ﻿from pandas import DataFrame
 from typing import Any
 
+# DEPRECATED: La lógica de validación ahora se integra en FindingBuilder en v3.0.
 class ValidationService:
     def validate(self, df: DataFrame, schema_info: dict[str, Any]) -> list[dict[str, Any]]:
         """
