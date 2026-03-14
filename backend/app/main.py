@@ -6,9 +6,13 @@ from app.api.routes import health, sessions, analyze
 from app.db.client import db
 from contextlib import asynccontextmanager
 
+from app.core.telemetry import setup_telemetry
+import uuid
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    setup_telemetry(app)
     await db.connect_to_db()
     yield
     # Shutdown
@@ -19,6 +23,14 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # Configurar CORSMiddleware
 app.add_middleware(
