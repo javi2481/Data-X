@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from typing import Optional, List
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
@@ -6,8 +7,9 @@ class Settings(BaseSettings):
     env: str = "development"
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db: str = "datax"
-    litellm_api_key: str = ""
-    litellm_model: str = "gpt-4o-mini"
+    # LLM opcionales para Corte 2
+    litellm_api_key: Optional[str] = ""
+    litellm_model: Optional[str] = "gpt-4o-mini"
     cors_origins: list[str] = ["http://localhost:3000"]
     otel_service_name: str = "datax-backend"
 
