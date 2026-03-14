@@ -2,26 +2,37 @@
 from typing import List
 
 from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse
-from app.api.routes.sessions import SESSION_STORE
+from app.repositories.mongo import session_repo
+from app.services.provenance import provenance_service
+from app.services.stats_engine import StatsEngine
 from app.services.artifact_builder import ArtifactBuilder
 
 router = APIRouter()
 artifact_builder = ArtifactBuilder()
+stats_engine = StatsEngine()
 
 @router.post("", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
     """
     Ejecuta un análisis sobre el dataset de la sesión.
-    En esta fase, genera artifacts estáticos basados en el dataset.
+    Recupera los datos de MongoDB.
     """
     session_id = request.session_id
     
-    if session_id not in SESSION_STORE:
+    # Buscar en MongoDB
+    session_data = await session_repo.get_session(session_id)
+    
+    if not session_data:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
     
-    session_data = SESSION_STORE[session_id]
-    df = session_data["df"]
+    # En esta fase, como el DF no se guarda en Mongo, 
+    # los artifacts se generan basándose en el schema_info persistido
+    # o tendríamos que re-leer el archivo.
+    # Dado que el objetivo de Emergent es mejorar esto, por ahora
+    # generamos lo que podemos con la info que hay en session_data.
+    
     schema_info = session_data["schema_info"]
+    profile = session_data.get("profile", {})
     alerts = session_data.get("alerts", [])
     
     # Construir artifacts
@@ -31,18 +42,56 @@ async def analyze(request: AnalyzeRequest):
     if alerts:
         artifacts.append(artifact_builder.build_alerts(alerts))
     
-    # 2. Métricas generales
-    artifacts.append(artifact_builder.build_metric_set(schema_info))
+    # 2. Métricas generales enriquecidas con Profile
+    if profile:
+        num_cols = len(schema_info["columns"])
+        num_numeric = len([c for c, p in profile.items() if "mean" in p])
+        num_text = len([c for c, p in profile.items() if "top_values" in p])
+        
+        metrics_artifact = artifact_builder.build_metric_set(schema_info)
+        metrics_artifact["data"]["metrics"].extend([
+            {"label": "Columnas numéricas", "value": num_numeric},
+            {"label": "Columnas de texto", "value": num_text}
+        ])
+        artifacts.append(metrics_artifact)
+    else:
+        artifacts.append(artifact_builder.build_metric_set(schema_info))
+
+    # 3. Stats avanzadas (si hay perfil)
+    # Por ahora enviamos un artifact de tipo summary con algunas stats
+    if profile:
+        stats_text = "Estadísticas por columna:\n"
+        for col, p in profile.items():
+            if "mean" in p:
+                stats_text += f"- {col}: media={p['mean']:.2f}, med={p['median']:.2f}, std={p['std']:.2f}\n"
+            elif "top_values" in p:
+                top = list(p['top_values'].keys())[:2]
+                stats_text += f"- {col}: únicos={p['unique_count']}, top={top}\n"
+        
+        artifacts.append(artifact_builder.build_summary(stats_text))
     
-    # 3. Vista previa de datos
-    artifacts.append(artifact_builder.build_table_artifact(df, title="Vista previa de datos (top 50)"))
+    # 3. Vista previa (Simulada si no hay DF en memoria)
+    # TODO: Implementar persistencia de DF (Parquet/S3) para recuperación real
+    artifacts.append({
+        "artifact_type": "table",
+        "title": "Vista previa (persistida)",
+        "data": {
+            "columns": schema_info["columns"],
+            "rows": [] # Placeholder hasta implementar persistencia de DF
+        }
+    })
     
-    # 4. Resumen (placeholder en esta fase)
+    # 4. Resumen inteligente (LiteLLM entrará aquí luego)
     summary_text = (
-        f"Análisis completado para el archivo '{session_data['source_metadata']['filename']}'. "
-        f"Se procesaron {schema_info['row_count']} filas y {len(schema_info['columns'])} columnas. "
-        "El sistema está listo para consultas avanzadas."
+        f"Análisis para '{session_data['source_metadata']['filename']}'. "
+        f"Datos persistidos en MongoDB. {schema_info['row_count']} filas detectadas."
     )
+    
+    # Registrar paso de análisis en provenance
+    await provenance_service.add_step(session_id, "analyze", {"query": request.query})
+    
+    # Obtener provenance actualizado
+    provenance_steps = await provenance_service.get_steps(session_id)
     
     return AnalyzeResponse(
         session_id=session_id,
@@ -50,6 +99,6 @@ async def analyze(request: AnalyzeRequest):
         summary=summary_text,
         provenance={
             "source": session_data['source_metadata']['filename'],
-            "steps": ["ingest", "normalize", "validate", "artifact_generation"]
+            "steps": provenance_steps
         }
     )

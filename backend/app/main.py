@@ -3,10 +3,21 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import health, sessions, analyze
+from app.db.client import db
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await db.connect_to_db()
+    yield
+    # Shutdown
+    await db.close_db_connection()
 
 app = FastAPI(
     title="Data-X API",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # Configurar CORSMiddleware
