@@ -10,8 +10,9 @@ class Settings(BaseSettings):
     # LLM opcionales para Corte 2
     litellm_api_key: Optional[str] = ""
     litellm_model: Optional[str] = "gpt-4o-mini"
-    cors_origins: list[str] = ["http://localhost:3000"]
+    cors_origins: List[str] = ["http://localhost:3000"]
     otel_service_name: str = "datax-backend"
+    otel_exporter_otlp_endpoint: Optional[str] = "http://localhost:4317"
 
     class Config:
         env_file = ".env"
