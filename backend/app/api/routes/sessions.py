@@ -100,9 +100,6 @@ async def create_session(file: UploadFile = File(...)):
         # Normalización
         df = normalization_service.normalize(df)
         
-        # Validación (Alertas)
-        # alerts = validation_service.validate(df, ingest_result["schema_info"]) # Mantenemos por ahora si es necesario
-        
         # Perfilado
         profile_data = profiler_service.profile(df)
         
