@@ -5,11 +5,13 @@ from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse
 from app.repositories.mongo import session_repo
 from app.services.provenance import provenance_service
 from app.services.stats_engine import StatsEngine
+from app.services.llm_service import LLMService
 from app.services.artifact_builder import ArtifactBuilder
 
 router = APIRouter()
 artifact_builder = ArtifactBuilder()
 stats_engine = StatsEngine()
+llm_service = LLMService()
 
 @router.post("", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
@@ -81,11 +83,15 @@ async def analyze(request: AnalyzeRequest):
         }
     })
     
-    # 4. Resumen inteligente (LiteLLM entrará aquí luego)
-    summary_text = (
-        f"Análisis para '{session_data['source_metadata']['filename']}'. "
-        f"Datos persistidos en MongoDB. {schema_info['row_count']} filas detectadas."
-    )
+    # 4. Resumen inteligente con LiteLLM
+    filename = session_data['source_metadata']['filename']
+    if profile:
+        summary_text = await llm_service.analyze_query(request.query, profile)
+    else:
+        summary_text = (
+            f"Análisis para '{filename}'. "
+            f"Datos persistidos en MongoDB. {schema_info['row_count']} filas detectadas."
+        )
     
     # Registrar paso de análisis en provenance
     await provenance_service.add_step(session_id, "analyze", {"query": request.query})
