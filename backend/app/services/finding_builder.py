@@ -185,7 +185,7 @@ class FindingBuilder:
             ))
         return findings
 
-    def build_all_findings(self, df: pd.DataFrame) -> List[Finding]:
+    def build_all_findings(self, df: pd.DataFrame, eda_results: dict = None) -> List[Finding]:
         all_findings = []
         # Detectar dataset vacío primero
         empty_findings = self.detect_empty_dataset(df)
@@ -198,4 +198,87 @@ class FindingBuilder:
         all_findings.extend(self.detect_high_cardinality(df))
         all_findings.extend(self.detect_low_cardinality(df))
         all_findings.extend(self.generate_column_stats(df))
+
+        # Hallazgos de EDA Extendido (Corte 2)
+        if eda_results:
+            if "correlations" in eda_results:
+                all_findings.extend(self.detect_strong_correlations(eda_results["correlations"]))
+            if "outliers" in eda_results:
+                all_findings.extend(self.detect_outliers_findings(eda_results["outliers"]))
+            if "distributions" in eda_results:
+                all_findings.extend(self.detect_distribution_issues(eda_results["distributions"]))
+                
         return all_findings
+
+    def detect_strong_correlations(self, correlations: dict) -> List[Finding]:
+        findings = []
+        for corr in correlations.get("strong_correlations", []):
+            severity = "critical" if abs(corr["value"]) > 0.9 else "warning"
+            finding_id = f"finding_{uuid4().hex[:8]}"
+            explanation = render_explanation(
+                "strong_correlation",
+                col1=corr["col1"],
+                col2=corr["col2"],
+                value=corr["value"],
+                classification=corr["classification"]
+            )
+            findings.append(Finding(
+                finding_id=finding_id,
+                category="strong_correlation",
+                severity=severity,
+                title=f"Correlación {corr['classification']} entre {corr['col1']} y {corr['col2']}",
+                technical_summary=f"r = {corr['value']}",
+                explanation=explanation,
+                affected_columns=[corr["col1"], corr["col2"]],
+                evidence=[Evidence(metric="correlation", value=corr["value"])]
+            ))
+        return findings
+
+    def detect_outliers_findings(self, outlier_results: list) -> List[Finding]:
+        findings = []
+        for res in outlier_results:
+            if res.get("outlier_percent", 0) > 5:
+                finding_id = f"finding_{uuid4().hex[:8]}"
+                explanation = render_explanation(
+                    "outlier_detected",
+                    column=res["column"],
+                    count=res["outlier_count"],
+                    percent=res["outlier_percent"],
+                    method=res["method"],
+                    lower=round(res["bounds"]["lower"], 2),
+                    upper=round(res["bounds"]["upper"], 2)
+                )
+                findings.append(Finding(
+                    finding_id=finding_id,
+                    category="outlier_detected",
+                    severity="warning",
+                    title=f"Outliers detectados en {res['column']}",
+                    technical_summary=f"{res['outlier_count']} outliers ({res['outlier_percent']}%)",
+                    explanation=explanation,
+                    affected_columns=[res["column"]],
+                    evidence=[Evidence(metric="outlier_percent", value=res["outlier_percent"])]
+                ))
+        return findings
+
+    def detect_distribution_issues(self, distributions: list) -> List[Finding]:
+        findings = []
+        for dist in distributions:
+            if dist["classification"] != "normal":
+                finding_id = f"finding_{uuid4().hex[:8]}"
+                explanation = render_explanation(
+                    "skewed_distribution",
+                    column=dist["column"],
+                    classification=dist["classification"],
+                    value=dist["skewness"]
+                )
+                findings.append(Finding(
+                    finding_id=finding_id,
+                    category="skewed_distribution",
+                    severity="info",
+                    title=f"Distribución {dist['classification']} en {dist['column']}",
+                    technical_summary=f"skewness: {dist['skewness']}",
+                    explanation=explanation,
+                    affected_columns=[dist["column"]],
+                    evidence=[Evidence(metric="skewness", value=dist["skewness"])]
+                ))
+        return findings
