@@ -1,2 +1,7 @@
-﻿# Emergent implementará este módulo.
-# Ver docs/prd-backend-emergent.md para especificación.
+﻿from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("")
+async def health():
+    return {"status": "ok"}
