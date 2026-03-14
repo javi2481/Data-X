@@ -70,4 +70,11 @@ class SessionRepository:
     async def get_bronze(self, session_id: str) -> Optional[dict[str, Any]]:
         return await self.bronze.find_one({"session_id": session_id})
 
+    async def list_sessions(self, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+        """
+        Lista las sesiones ordenadas por fecha descendente.
+        """
+        cursor = self.sessions.find().sort("created_at", -1).skip(offset).limit(limit)
+        return await cursor.to_list(length=limit)
+
 session_repo = SessionRepository()

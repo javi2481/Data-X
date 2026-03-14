@@ -1,8 +1,8 @@
-﻿from fastapi import APIRouter, UploadFile, File, HTTPException
+﻿from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import uuid
-from typing import Any
+from typing import Any, List
 
 from app.schemas.session import SessionResponse
 from app.schemas.analyze import ErrorResponse
@@ -213,6 +213,15 @@ async def create_session(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+@router.get("", 
+    response_model=List[SessionResponse],
+    summary="Listar historial de sesiones",
+    description="Devuelve una lista paginada de todas las sesiones realizadas ordenadas por fecha."
+)
+async def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+    sessions = await session_repo.list_sessions(limit=limit, offset=offset)
+    return [SessionResponse(**s) for s in sessions]
 
 @router.get("/{session_id}", 
     response_model=SessionResponse,
