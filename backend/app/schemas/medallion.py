@@ -52,4 +52,5 @@ class SilverRecord(BaseModel):
     column_profiles: List[ColumnProfile]
     findings: List[Dict[str, Any]]  # List of Finding dicts
     chart_specs: List[Dict[str, Any]]  # List of ChartSpec dicts
+    data_preview: List[Dict[str, Any]] = []  # Primeras N filas del dataset
     processed_at: datetime

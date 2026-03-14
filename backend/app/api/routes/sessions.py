@@ -142,12 +142,17 @@ async def create_session(file: UploadFile = File(...)):
         # Charts
         charts = chart_spec_generator.generate_all_charts(df, findings)
 
+        # Preview de datos (convertir NaN a None para JSON)
+        preview_df = df.head(50).where(df.head(50).notna(), None)
+        data_preview = preview_df.to_dict(orient="records")
+
         silver_record = SilverRecord(
             session_id=session_id,
             dataset_overview=overview,
             column_profiles=column_profiles,
             findings=[f.model_dump() for f in findings],
             chart_specs=[c.model_dump() for c in charts],
+            data_preview=data_preview,
             processed_at=datetime.utcnow()
         )
         

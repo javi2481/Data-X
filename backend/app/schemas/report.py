@@ -16,6 +16,7 @@ class AnalysisReport(BaseModel):
     column_profiles: List[Dict[str, Any]]
     findings: List[Dict[str, Any]]
     chart_specs: List[Dict[str, Any]]
+    data_preview: List[Dict[str, Any]] = []  # Primeras filas para previsualización
     explanations: Dict[str, str] = {}  # finding_id -> explanation text
     provenance: ProvenanceInfo
     contract_version: str = "v1"

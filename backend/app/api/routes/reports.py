@@ -71,6 +71,7 @@ async def get_analysis_report(session_id: str):
         column_profiles=silver.get("column_profiles", []),
         findings=silver.get("findings", []),
         chart_specs=silver.get("chart_specs", []),
+        data_preview=silver.get("data_preview", []),
         explanations=explanations,
         provenance=provenance,
         contract_version="v1",
