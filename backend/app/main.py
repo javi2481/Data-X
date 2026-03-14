@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import health, sessions, analyze
+from app.api.routes import health, sessions, analyze, reports
 from app.db.client import db
 from contextlib import asynccontextmanager
 
@@ -57,7 +57,13 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={"error_code": "INTERNAL_ERROR", "message": f"Ha ocurrido un error inesperado: {str(exc)}"},
     )
 
-# Registrar routers
+# Registrar routers (prefijo /api)
+app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
+app.include_router(analyze.router, prefix="/api/analyze", tags=["analyze"])
+app.include_router(reports.router, prefix="/api/sessions", tags=["reports"])
+
+# Mantener compatibilidad (sin /api) - Opcional, pero recomendado
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(analyze.router, prefix="/analyze", tags=["analyze"])
