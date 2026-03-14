@@ -68,8 +68,38 @@ class ArtifactBuilder:
         """
         return {
             "artifact_type": "summary",
-            "title": "Resumen",
+            "title": "Análisis inteligente",
             "data": {
                 "text": text
+            }
+        }
+
+    def build_chart_config(self, title: str, chart_type: str, x_data: list, y_data: list, x_label: str = "", y_label: str = "") -> dict[str, Any]:
+        """
+        Crea un artifact de tipo gráfico para que el frontend lo renderice con Recharts.
+        """
+        # Asegurar que no haya NaNs en los datos de entrada para JSON
+        import math
+        def clean_val(v):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            return v
+
+        clean_x = [clean_val(v) for v in x_data]
+        clean_y = [clean_val(v) for v in y_data]
+
+        return {
+            "artifact_type": "chart_config",
+            "title": title,
+            "data": {
+                "type": chart_type, # bar, line, pie, scatter
+                "x_label": x_label,
+                "y_label": y_label,
+                "series": [
+                    {
+                        "name": y_label or "valor",
+                        "data": [{"x": x, "y": y} for x, y in zip(clean_x, clean_y)]
+                    }
+                ]
             }
         }

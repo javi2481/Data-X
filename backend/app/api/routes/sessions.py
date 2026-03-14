@@ -4,6 +4,7 @@ import uuid
 from typing import Dict, Any
 
 from app.schemas.session import SessionResponse
+from app.schemas.analyze import ErrorResponse
 from app.services.ingest import IngestService
 from app.services.normalization import NormalizationService
 from app.services.validation import ValidationService
@@ -20,20 +21,32 @@ validation_service = ValidationService()
 profiler_service = ProfilerService()
 quality_gate = DoclingQualityGate()
 
-@router.post("", response_model=SessionResponse)
+@router.post("", response_model=SessionResponse, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
 async def create_session(file: UploadFile = File(...)):
     """
     Crea una sesión a partir de un archivo subido.
     Realiza ingesta, normalización y validación inicial.
     Persiste los metadatos y resultados en MongoDB.
     """
+    # Validaciones de archivo
     if not file.filename:
         raise HTTPException(status_code=400, detail="No se proporcionó un nombre de archivo")
     
+    if not file.filename.lower().endswith(".csv") and file.content_type != "text/csv":
+        # Por ahora solo permitimos CSV, aunque Docling soporte más, para cumplir el hardening
+        raise HTTPException(status_code=400, detail="Formato de archivo no soportado. Debe ser CSV.")
+
+    MAX_FILE_SIZE = 50 * 1024 * 1024 # 50MB
+    
     try:
         content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="El archivo es demasiado grande (máx 50MB)")
         
-        # 1. Ingesta (ahora incluye Docling/Fallback)
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="El archivo está vacío")
+
+        # 1. Ingesta (Docling/Fallback)
         ingest_result = await ingest_service.ingest_file(
             file_bytes=content,
             filename=file.filename,

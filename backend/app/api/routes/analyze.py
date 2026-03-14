@@ -1,7 +1,6 @@
-﻿from fastapi import APIRouter, HTTPException
+﻿from fastapi import APIRouter, HTTPException, Request
 from typing import List
-
-from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse
+from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse, ErrorResponse
 from app.repositories.mongo import session_repo
 from app.services.provenance import provenance_service
 from app.services.stats_engine import StatsEngine
@@ -13,12 +12,15 @@ artifact_builder = ArtifactBuilder()
 stats_engine = StatsEngine()
 llm_service = LLMService()
 
-@router.post("", response_model=AnalyzeResponse)
+@router.post("", response_model=AnalyzeResponse, responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}})
 async def analyze(request: AnalyzeRequest):
     """
     Ejecuta un análisis sobre el dataset de la sesión.
     Recupera los datos de MongoDB.
     """
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="La consulta no puede estar vacía")
+
     session_id = request.session_id
     
     # Buscar en MongoDB
@@ -26,12 +28,6 @@ async def analyze(request: AnalyzeRequest):
     
     if not session_data:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
-    
-    # En esta fase, como el DF no se guarda en Mongo, 
-    # los artifacts se generan basándose en el schema_info persistido
-    # o tendríamos que re-leer el archivo.
-    # Dado que el objetivo de Emergent es mejorar esto, por ahora
-    # generamos lo que podemos con la info que hay en session_data.
     
     schema_info = session_data["schema_info"]
     profile = session_data.get("profile", {})
@@ -56,42 +52,48 @@ async def analyze(request: AnalyzeRequest):
             {"label": "Columnas de texto", "value": num_text}
         ])
         artifacts.append(metrics_artifact)
+
+        # 3. Gráficos automáticos (NUEVO Fase 6)
+        # Tomar hasta 2 columnas numéricas para un bar chart de promedios
+        numeric_cols = [c for c, p in profile.items() if "mean" in p]
+        if numeric_cols:
+            x_data = numeric_cols[:5] # Top 5 cols
+            y_data = [profile[c]["mean"] for c in x_data]
+            artifacts.append(artifact_builder.build_chart_config(
+                title="Promedios por Columna",
+                chart_type="bar",
+                x_data=x_data,
+                y_data=y_data,
+                x_label="Columna",
+                y_label="Promedio"
+            ))
     else:
         artifacts.append(artifact_builder.build_metric_set(schema_info))
 
-    # 3. Stats avanzadas (si hay perfil)
-    # Por ahora enviamos un artifact de tipo summary con algunas stats
-    if profile:
-        stats_text = "Estadísticas por columna:\n"
-        for col, p in profile.items():
-            if "mean" in p:
-                stats_text += f"- {col}: media={p['mean']:.2f}, med={p['median']:.2f}, std={p['std']:.2f}\n"
-            elif "top_values" in p:
-                top = list(p['top_values'].keys())[:2]
-                stats_text += f"- {col}: únicos={p['unique_count']}, top={top}\n"
-        
-        artifacts.append(artifact_builder.build_summary(stats_text))
+    # 4. Resumen inteligente con LiteLLM (con timeout y fallback)
+    filename = session_data['source_metadata']['filename']
+    try:
+        if profile:
+            # LLMService ya debería manejar el timeout internamente o lo manejamos aquí
+            import asyncio
+            summary_text = await asyncio.wait_for(
+                llm_service.analyze_query(request.query, profile),
+                timeout=30.0
+            )
+        else:
+            summary_text = f"Análisis para '{filename}'. Sin perfil detallado."
+    except Exception as e:
+        summary_text = f"No se pudo generar el resumen inteligente: {str(e)}. Mostrando métricas base."
     
-    # 3. Vista previa (Simulada si no hay DF en memoria)
-    # TODO: Implementar persistencia de DF (Parquet/S3) para recuperación real
+    # 5. Vista previa (Placeholder)
     artifacts.append({
         "artifact_type": "table",
-        "title": "Vista previa (persistida)",
+        "title": "Vista previa de datos",
         "data": {
             "columns": schema_info["columns"],
-            "rows": [] # Placeholder hasta implementar persistencia de DF
+            "rows": [] 
         }
     })
-    
-    # 4. Resumen inteligente con LiteLLM
-    filename = session_data['source_metadata']['filename']
-    if profile:
-        summary_text = await llm_service.analyze_query(request.query, profile)
-    else:
-        summary_text = (
-            f"Análisis para '{filename}'. "
-            f"Datos persistidos en MongoDB. {schema_info['row_count']} filas detectadas."
-        )
     
     # Registrar paso de análisis en provenance
     await provenance_service.add_step(session_id, "analyze", {"query": request.query})
@@ -104,7 +106,7 @@ async def analyze(request: AnalyzeRequest):
         artifacts=artifacts,
         summary=summary_text,
         provenance={
-            "source": session_data['source_metadata']['filename'],
+            "source": filename,
             "steps": provenance_steps
         }
     )
