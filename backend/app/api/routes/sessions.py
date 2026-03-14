@@ -15,6 +15,7 @@ from app.services.finding_builder import FindingBuilder
 from app.services.chart_spec_generator import ChartSpecGenerator
 from app.services.eda_extended import EDAExtendedService
 from app.services.llm_service import LLMService
+from app.services.schema_validator import SchemaValidator
 from app.repositories.mongo import session_repo
 
 router = APIRouter()
@@ -27,6 +28,7 @@ finding_builder = FindingBuilder()
 chart_spec_generator = ChartSpecGenerator()
 eda_service = EDAExtendedService()
 llm_service = LLMService()
+schema_validator = SchemaValidator()
 
 @router.post("", 
     response_model=SessionResponse, 
@@ -45,12 +47,15 @@ async def create_session(file: UploadFile = File(...)):
             content={"error_code": "INVALID_FILE", "message": "No se proporcionó un nombre de archivo"}
         )
     
-    # Soporte solo para CSV en Corte 1
-    allowed_extensions = [".csv"]
+    # Soporte para CSV, XLSX, XLS y PDF en Corte 3
+    allowed_extensions = [".csv", ".xlsx", ".xls", ".pdf"]
     if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
         return JSONResponse(
             status_code=400,
-            content={"error_code": "UNSUPPORTED_FORMAT", "message": f"Formato de archivo no soportado. Solo se permiten: {', '.join(allowed_extensions)}"}
+            content={
+                "error_code": "UNSUPPORTED_FORMAT", 
+                "message": f"Formato de archivo no soportado. Formatos aceptados: {', '.join(allowed_extensions)}"
+            }
         )
 
     MAX_FILE_SIZE = 50 * 1024 * 1024 # 50MB
@@ -107,6 +112,9 @@ async def create_session(file: UploadFile = File(...)):
         # Perfilado
         profile_data = profiler_service.profile(df)
         
+        # Validación de esquema (Corte 3)
+        schema_results = schema_validator.validate_and_report(df)
+        
         # EDA Extendido (Corte 2)
         eda_results = {
             "correlations": eda_service.compute_correlations(df),
@@ -144,8 +152,8 @@ async def create_session(file: UploadFile = File(...)):
             duplicate_percent=float(df.duplicated().sum() / len(df)) if len(df) > 0 else 0.0
         )
 
-        # Findings (ACTUALIZADO para Corte 2)
-        findings = finding_builder.build_all_findings(df, eda_results=eda_results)
+        # Findings (ACTUALIZADO para Corte 3)
+        findings = finding_builder.build_all_findings(df, eda_results=eda_results, schema_results=schema_results)
         
         # Charts (ACTUALIZADO para Corte 2)
         charts = chart_spec_generator.generate_all_charts(df, findings, eda_results=eda_results)

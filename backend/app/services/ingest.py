@@ -21,18 +21,26 @@ class IngestService:
     async def ingest_file(self, file_bytes: bytes, filename: str, content_type: str) -> dict[str, Any]:
         """
         Lee archivos usando Docling como pipeline principal, con pandas como fallback.
+        Soporta CSV, PDF, XLSX, XLS.
         """
+        ext = os.path.splitext(filename)[1].lower()
+        is_pdf = ext == ".pdf" or content_type == "application/pdf"
+        is_excel = ext in [".xlsx", ".xls"] or content_type in [
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel"
+        ]
+        is_csv = ext == ".csv" or content_type in ["text/csv", "application/vnd.ms-excel"]
+
         conversion_metadata = {
             "method": "unknown",
             "confidence": None,
             "tables_found": False
         }
 
-        # Intentar con Docling primero
+        # Intentar con Docling primero (Preferido para PDF y Excel)
         if DOCLING_AVAILABLE:
             try:
-                # Docling a veces prefiere archivos en disco, creamos un temporal
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                     tmp.write(file_bytes)
                     tmp_path = tmp.name
 
@@ -40,35 +48,30 @@ class IngestService:
                     result = self.converter.convert(tmp_path)
                     
                     # Extraer tablas. Docling 2.x devuelve un objeto con tablas.
-                    # Asumimos que queremos la primera tabla relevante para este MVP.
                     tables = result.document.tables
                     if tables:
                         # Convertir la primera tabla de Docling a Pandas DataFrame
-                        # Nota: La API exacta puede variar según versión, pero export_to_dataframe es común en wrappers
                         df = tables[0].export_to_dataframe()
                         conversion_metadata["method"] = "docling"
                         conversion_metadata["tables_found"] = True
-                        # Docling no siempre da un float simple de confidence por documento, 
-                        # pero algunos modelos de tabla sí. Ponemos un placeholder o extraemos si existe.
                         conversion_metadata["confidence"] = getattr(result, "confidence", 0.95)
                         
-                        logger.info("ingest_success", method="docling", filename=filename)
-                        
+                        logger.info("ingest_success", method="docling", filename=filename, format=ext)
                         return self._prepare_response(df, filename, content_type, len(file_bytes), conversion_metadata)
+                    
+                    elif is_pdf:
+                        # Requerimiento: Si PDF no tiene tablas, error.
+                        raise ValueError("No se encontraron tablas estructuradas en el archivo PDF.")
                 finally:
                     if os.path.exists(tmp_path):
                         os.remove(tmp_path)
             except Exception as e:
+                if is_pdf and "No se encontraron tablas" in str(e):
+                    raise
                 logger.warning("docling_failed", error=str(e), filename=filename)
-                # Fallback a pandas
 
-        # Fallback a Pandas (solo CSV por ahora según requisitos previos, o lo que soporte pandas)
+        # Fallback a Pandas
         try:
-            is_csv = (
-                content_type in ["text/csv", "application/vnd.ms-excel"] or
-                filename.lower().endswith(".csv")
-            )
-            
             if is_csv:
                 # Intentar detectar separador automáticamente (, ; \t)
                 try:
@@ -80,12 +83,28 @@ class IngestService:
                 conversion_metadata["method"] = "fallback"
                 conversion_metadata["reason"] = "docling_error_or_not_available" if DOCLING_AVAILABLE else "docling_not_installed"
                 
-                logger.info("ingest_success", method="fallback", filename=filename)
+                logger.info("ingest_success", method="fallback_csv", filename=filename)
                 return self._prepare_response(df, filename, content_type, len(file_bytes), conversion_metadata)
+            
+            elif is_excel:
+                # Fallback para Excel usando pandas (requiere openpyxl para xlsx)
+                df = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
+                conversion_metadata["method"] = "fallback"
+                conversion_metadata["reason"] = "docling_error_or_not_available"
+                
+                logger.info("ingest_success", method="fallback_excel", filename=filename)
+                return self._prepare_response(df, filename, content_type, len(file_bytes), conversion_metadata)
+            
+            elif is_pdf:
+                # Si llegamos aquí y es PDF, es que falló Docling y no hay fallback razonable para tablas
+                raise ValueError("El motor de análisis Docling no pudo extraer tablas del PDF y no hay fallback disponible.")
+                
             else:
-                raise ValueError(f"Formato {content_type} no soportado por el motor de fallback.")
+                raise ValueError(f"Formato {ext} / {content_type} no soportado por el motor de ingesta.")
                 
         except Exception as e:
+            if isinstance(e, ValueError) and "Docling" in str(e):
+                raise
             logger.error("ingest_failed", error=str(e), filename=filename)
             raise ValueError(f"Error en la ingesta de datos: {str(e)}")
 

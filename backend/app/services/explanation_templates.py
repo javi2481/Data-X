@@ -9,7 +9,7 @@ TEMPLATES = {
     "skewed_distribution": "La columna '{column}' muestra una distribución {classification} (skewness: {value}). Considerar transformación logarítmica.",
     "column_stats": "Columna '{column}': tipo {dtype}, {count} valores, rango [{min}, {max}], media {mean}.",
     "data_quality_warning": "{message}",
-    "schema_warning": "{message}",
+    "schema_warning": "Validación de schema: {message} en columna '{column}'. Check: {check}.",
 }
 
 def render_explanation(category: str, **kwargs) -> str:

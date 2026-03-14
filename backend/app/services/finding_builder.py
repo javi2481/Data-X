@@ -185,7 +185,7 @@ class FindingBuilder:
             ))
         return findings
 
-    def build_all_findings(self, df: pd.DataFrame, eda_results: dict = None) -> List[Finding]:
+    def build_all_findings(self, df: pd.DataFrame, eda_results: dict = None, schema_results: list = None) -> List[Finding]:
         all_findings = []
         # Detectar dataset vacío primero
         empty_findings = self.detect_empty_dataset(df)
@@ -198,6 +198,10 @@ class FindingBuilder:
         all_findings.extend(self.detect_high_cardinality(df))
         all_findings.extend(self.detect_low_cardinality(df))
         all_findings.extend(self.generate_column_stats(df))
+
+        # Hallazgos de esquema (Corte 3)
+        if schema_results:
+            all_findings.extend(self.detect_schema_issues(schema_results))
 
         # Hallazgos de EDA Extendido (Corte 2)
         if eda_results:
@@ -213,13 +217,14 @@ class FindingBuilder:
     def detect_strong_correlations(self, correlations: dict) -> List[Finding]:
         findings = []
         for corr in correlations.get("strong_correlations", []):
-            severity = "critical" if abs(corr["value"]) > 0.9 else "warning"
+            correlation_val = corr.get("correlation", corr.get("value", 0))
+            severity = "critical" if abs(correlation_val) > 0.9 else "warning"
             finding_id = f"finding_{uuid4().hex[:8]}"
             explanation = render_explanation(
                 "strong_correlation",
                 col1=corr["col1"],
                 col2=corr["col2"],
-                value=corr["value"],
+                value=correlation_val,
                 classification=corr["classification"]
             )
             findings.append(Finding(
@@ -227,10 +232,10 @@ class FindingBuilder:
                 category="strong_correlation",
                 severity=severity,
                 title=f"Correlación {corr['classification']} entre {corr['col1']} y {corr['col2']}",
-                technical_summary=f"r = {corr['value']}",
+                technical_summary=f"r = {correlation_val}",
                 explanation=explanation,
                 affected_columns=[corr["col1"], corr["col2"]],
-                evidence=[Evidence(metric="correlation", value=corr["value"])]
+                evidence=[Evidence(metric="correlation", value=correlation_val)]
             ))
         return findings
 
@@ -281,4 +286,26 @@ class FindingBuilder:
                     affected_columns=[dist["column"]],
                     evidence=[Evidence(metric="skewness", value=dist["skewness"])]
                 ))
+        return findings
+
+    def detect_schema_issues(self, schema_results: list) -> List[Finding]:
+        findings = []
+        for res in schema_results:
+            finding_id = f"finding_{uuid4().hex[:8]}"
+            explanation = render_explanation(
+                "schema_warning",
+                message=res["message"],
+                column=res["column"],
+                check=res["check"]
+            )
+            findings.append(Finding(
+                finding_id=finding_id,
+                category="schema_warning",
+                severity=res["severity"],
+                title=f"Inconsistencia de esquema en {res['column']}",
+                technical_summary=f"Check: {res['check']}",
+                explanation=explanation,
+                affected_columns=[res["column"]],
+                evidence=[Evidence(metric="check", value=res["check"])]
+            ))
         return findings
