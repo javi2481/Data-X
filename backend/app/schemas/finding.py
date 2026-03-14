@@ -13,7 +13,8 @@ class Finding(BaseModel):
     category: Literal[
         "high_null_rate", "duplicate_rows", "constant_column",
         "high_cardinality", "low_cardinality", "type_mismatch",
-        "column_stats", "data_quality_warning", "schema_warning"
+        "column_stats", "data_quality_warning", "schema_warning",
+        "strong_correlation", "outlier_detected", "skewed_distribution"
     ]
     severity: Literal["critical", "warning", "info"]
     title: str
