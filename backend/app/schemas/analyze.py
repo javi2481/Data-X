@@ -7,9 +7,11 @@ class AnalyzeRequest(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     session_id: str
-    artifacts: List[dict]
-    provenance: Optional[dict] = None
-    summary: Optional[str] = None
+    query: str
+    answer: str
+    relevant_findings: List[dict] = []
+    relevant_charts: List[dict] = []
+    confidence: str
     contract_version: str = "v1"
 
 class ErrorResponse(BaseModel):

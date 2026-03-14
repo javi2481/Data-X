@@ -1,21 +1,22 @@
-﻿from fastapi import APIRouter, HTTPException, Request
+﻿from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from typing import List
 from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse, ErrorResponse
 from app.repositories.mongo import session_repo
+from app.services.llm_service import LLMService
 
 router = APIRouter()
+llm_service = LLMService()
 
 @router.post("", 
     response_model=AnalyzeResponse, 
     responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
-    summary="Análisis interactivo (Legacy/Compat)",
-    description="Permite realizar consultas sobre el dataset. En Corte 1 devuelve resultados estáticos o el reporte completo para mantener compatibilidad con el frontend."
+    summary="Análisis interactivo con motor LLM",
+    description="Permite realizar consultas inteligentes sobre el dataset usando procesamiento de lenguaje natural."
 )
 async def analyze(request: AnalyzeRequest):
     """
-    Ejecuta un análisis sobre el dataset de la sesión.
-    Adaptado para devolver el reporte completo si la query es genérica.
+    Ejecuta un análisis inteligente sobre el dataset de la sesión.
+    Llama al LLMService para procesar la consulta con el contexto completo.
     """
     if not request.session_id.strip():
         return JSONResponse(
@@ -31,56 +32,55 @@ async def analyze(request: AnalyzeRequest):
 
     session_id = request.session_id
     
-    # Buscar datos Silver en MongoDB
-    silver = await session_repo.get_silver(session_id)
+    # 1. Recuperar sesión y datos Silver
     session = await session_repo.get_session(session_id)
-    
     if not session:
         return JSONResponse(
             status_code=404,
             content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
         )
 
+    silver = await session_repo.get_silver(session_id)
     if not silver:
         return JSONResponse(
             status_code=404,
             content={"error_code": "ANALYSIS_NOT_FOUND", "message": "No se encontraron resultados de análisis para esta sesión"}
         )
-    
-    # Mantenemos compatibilidad con el frontend transformando Findings y ChartSpecs a Artifacts genéricos
-    artifacts = []
-    
-    # Convertir Findings a Alertas/Texto
-    findings = silver.get("findings", [])
-    if findings:
-        artifacts.append({
-            "artifact_type": "alerts",
-            "title": "Hallazgos detectados",
-            "data": {
-                "alerts": [
-                    {"type": f["severity"], "message": f["title"], "details": f["explanation"]}
-                    for f in findings
-                ]
-            }
-        })
-    
-    # Convertir ChartSpecs a Artifacts de tipo chart_config
-    chart_specs = silver.get("chart_specs", [])
-    for spec in chart_specs:
-        artifacts.append({
-            "artifact_type": "chart_config",
-            "title": spec["title"],
-            "data": spec # El frontend deberá estar preparado para recibir ChartSpec o mapearlo
-        })
 
-    # Resumen estático (Corte 1)
-    overview = silver.get("dataset_overview", {})
-    filename = session.get("source_metadata", {}).get("filename", "dataset")
-    summary_text = f"Análisis del dataset '{filename}'. Se encontraron {len(findings)} hallazgos relevantes."
+    # 2. Recuperar Gold Record si existe
+    gold = await session_repo.get_gold(session_id)
+    
+    # 3. Construir contexto para el LLM
+    context = {
+        "dataset_overview": silver.get("dataset_overview", {}),
+        "column_profiles": silver.get("column_profiles", []),
+        "findings": silver.get("findings", []),
+        "executive_summary": gold.get("executive_summary") if gold else None,
+        "filename": session.get("source_metadata", {}).get("filename", "dataset")
+    }
+    
+    # 4. Llamar al motor LLM
+    llm_result = await llm_service.answer_query(request.query, context)
+    
+    # 5. Filtrar findings y charts relevantes
+    all_findings = silver.get("findings", [])
+    relevant_finding_ids = llm_result.get("relevant_findings", [])
+    relevant_findings = [f for f in all_findings if f["finding_id"] in relevant_finding_ids]
+    
+    all_charts = silver.get("chart_specs", [])
+    # Por ahora incluimos un par de charts relevantes o los primeros por defecto
+    relevant_charts = all_charts[:2] 
+    
+    # Si no hay findings filtrados pero el LLM no dio nada, mostrar algunos si la query parece pedir hallazgos
+    if not relevant_findings and len(all_findings) > 0 and any(kw in request.query.lower() for kw in ["problema", "hallazgo", "alerta", "finding"]):
+        relevant_findings = [f for f in all_findings if f["severity"] in ["critical", "warning"]][:5]
 
     return AnalyzeResponse(
         session_id=session_id,
-        artifacts=artifacts,
-        summary=summary_text,
+        query=request.query,
+        answer=llm_result.get("answer", "No se pudo generar una respuesta inteligente."),
+        relevant_findings=relevant_findings,
+        relevant_charts=relevant_charts,
+        confidence=llm_result.get("confidence", "low"),
         contract_version="v1"
     )
