@@ -1,0 +1,4 @@
+*       @equipo
+/backend @equipo/backend-experts
+/frontend @equipo/frontend-experts
+/docs    @equipo/product-owners
