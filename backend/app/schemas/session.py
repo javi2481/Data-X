@@ -7,7 +7,7 @@ class SessionResponse(BaseModel):
     status: Literal["created", "processing", "ready", "error"]
     created_at: datetime
     source_metadata: dict
-    schema_info: Optional[dict] = None
-    profile: Optional[dict] = None
-    quality_gate: Optional[dict] = None
+    quality_decision: Optional[str] = None
+    dataset_overview: Optional[dict] = None
+    finding_count: Optional[int] = None
     contract_version: str = "v1"
