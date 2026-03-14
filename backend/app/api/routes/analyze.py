@@ -1,4 +1,5 @@
 ﻿from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from typing import List
 from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse, ErrorResponse
 from app.repositories.mongo import session_repo
@@ -11,8 +12,17 @@ async def analyze(request: AnalyzeRequest):
     Ejecuta un análisis sobre el dataset de la sesión.
     Adaptado para devolver el reporte completo si la query es genérica.
     """
+    if not request.session_id.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "INVALID_SESSION_ID", "message": "El session_id no puede estar vacío"}
+        )
+
     if not request.query.strip():
-        raise HTTPException(status_code=400, detail="La consulta no puede estar vacía")
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "INVALID_QUERY", "message": "La consulta no puede estar vacía"}
+        )
 
     session_id = request.session_id
     
@@ -20,8 +30,17 @@ async def analyze(request: AnalyzeRequest):
     silver = await session_repo.get_silver(session_id)
     session = await session_repo.get_session(session_id)
     
-    if not silver or not session:
-        raise HTTPException(status_code=404, detail="Sesión o análisis no encontrado")
+    if not session:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
+        )
+
+    if not silver:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "ANALYSIS_NOT_FOUND", "message": "No se encontraron resultados de análisis para esta sesión"}
+        )
     
     # Mantenemos compatibilidad con el frontend transformando Findings y ChartSpecs a Artifacts genéricos
     artifacts = []

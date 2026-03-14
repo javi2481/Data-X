@@ -1,5 +1,6 @@
 ﻿import pandas as pd
 import re
+import unicodedata
 from pandas import DataFrame
 
 class NormalizationService:
@@ -10,11 +11,14 @@ class NormalizationService:
         # 1. Limpiar nombres de columnas
         new_columns = {}
         for col in df.columns:
+            # Normalizar caracteres especiales (acentos, ñ, etc.)
+            clean_name = str(col)
+            clean_name = unicodedata.normalize('NFKD', clean_name).encode('ASCII', 'ignore').decode('ASCII')
             # Lowercase
-            clean_name = str(col).lower()
-            # Reemplazar espacios por _
-            clean_name = clean_name.replace(" ", "_")
-            # Quitar caracteres especiales (solo dejar a-z0-9 y _)
+            clean_name = clean_name.lower()
+            # Reemplazar espacios y guiones por _
+            clean_name = clean_name.replace(" ", "_").replace("-", "_")
+            # Quitar caracteres especiales restantes (solo dejar a-z0-9 y _)
             clean_name = re.sub(r'[^a-z0-9_]', '', clean_name)
             # Asegurar que no sea vacío o duplicado (simplificado)
             if not clean_name:

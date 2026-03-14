@@ -170,8 +170,28 @@ class FindingBuilder:
             ))
         return findings
 
+    def detect_empty_dataset(self, df: pd.DataFrame) -> List[Finding]:
+        findings = []
+        if len(df) == 0:
+            finding_id = f"finding_{uuid4().hex[:8]}"
+            findings.append(Finding(
+                finding_id=finding_id,
+                category="data_quality_warning",
+                severity="warning",
+                title="Dataset sin datos",
+                technical_summary="El archivo contiene encabezados pero no tiene filas de datos.",
+                explanation="No se pueden realizar análisis estadísticos sobre un dataset vacío.",
+                evidence=[Evidence(metric="row_count", value=0)]
+            ))
+        return findings
+
     def build_all_findings(self, df: pd.DataFrame) -> List[Finding]:
         all_findings = []
+        # Detectar dataset vacío primero
+        empty_findings = self.detect_empty_dataset(df)
+        if empty_findings:
+            return empty_findings
+            
         all_findings.extend(self.detect_high_null_rate(df))
         all_findings.extend(self.detect_duplicate_rows(df))
         all_findings.extend(self.detect_constant_columns(df))

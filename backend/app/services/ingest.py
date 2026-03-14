@@ -70,7 +70,13 @@ class IngestService:
             )
             
             if is_csv:
-                df = pd.read_csv(io.BytesIO(file_bytes), dtype=str)
+                # Intentar detectar separador automáticamente (, ; \t)
+                try:
+                    df = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine='python', dtype=str)
+                except Exception:
+                    # Fallback simple si falla la auto-detección
+                    df = pd.read_csv(io.BytesIO(file_bytes), dtype=str)
+                
                 conversion_metadata["method"] = "fallback"
                 conversion_metadata["reason"] = "docling_error_or_not_available" if DOCLING_AVAILABLE else "docling_not_installed"
                 

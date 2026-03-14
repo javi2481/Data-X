@@ -3,6 +3,14 @@ import numpy as np
 from pandas import DataFrame
 
 class ProfilerService:
+    def _clean_value(self, val):
+        if pd.isna(val) or (isinstance(val, (float, int)) and np.isinf(val)):
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
     def profile(self, df: DataFrame) -> dict:
         """
         Genera un perfil detallado de cada columna en el DataFrame.
@@ -33,11 +41,11 @@ class ProfilerService:
             if pd.api.types.is_numeric_dtype(series):
                 try:
                     col_profile.update({
-                        "min": float(series.min()) if count > 0 else None,
-                        "max": float(series.max()) if count > 0 else None,
-                        "mean": float(series.mean()) if count > 0 else None,
-                        "median": float(series.median()) if count > 0 else None,
-                        "std": float(series.std()) if count > 0 else None
+                        "min": self._clean_value(series.min()) if count > 0 else None,
+                        "max": self._clean_value(series.max()) if count > 0 else None,
+                        "mean": self._clean_value(series.mean()) if count > 0 else None,
+                        "median": self._clean_value(series.median()) if count > 0 else None,
+                        "std": self._clean_value(series.std()) if count > 0 else None
                     })
                 except (ValueError, TypeError):
                     # En caso de dtypes mixtos que fallan en min/max/etc.

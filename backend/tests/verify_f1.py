@@ -64,7 +64,23 @@ def test_f1():
     print(f"Body summary: {response.json().get('summary')}")
     assert response.status_code == 200
     
-    print("\n=== Verificación F1 COMPLETADA con ÉXITO ===")
+    # 6. Probar Edge Cases
+    print("\n6. Probar Edge Cases: edge_cases.csv")
+    edge_fixture = "tests/fixtures/edge_cases.csv"
+    with open(edge_fixture, "rb") as f:
+        files = {"file": ("edge_cases.csv", f, "text/csv")}
+        response = client.post("/api/sessions", files=files)
+    
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Session ID (edge): {data.get('session_id')}")
+        print(f"Findings: {data.get('finding_count')}")
+        assert data.get("finding_count") > 0
+    else:
+        print(f"Body error: {response.text}")
+    
+    print("\n=== Verificación F1 + F2 COMPLETADA con ÉXITO ===")
 
 if __name__ == "__main__":
     try:

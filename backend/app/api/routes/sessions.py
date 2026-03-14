@@ -1,4 +1,5 @@
 ﻿from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 from datetime import datetime
 import uuid
 from typing import Dict, Any
@@ -32,20 +33,34 @@ async def create_session(file: UploadFile = File(...)):
     Pipeline Medallion: Bronze -> Silver.
     """
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No se proporcionó un nombre de archivo")
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "INVALID_FILE", "message": "No se proporcionó un nombre de archivo"}
+        )
     
-    if not file.filename.lower().endswith(".csv") and file.content_type != "text/csv":
-        raise HTTPException(status_code=400, detail="Formato de archivo no soportado. Debe ser CSV.")
+    # Soporte solo para CSV en Corte 1
+    allowed_extensions = [".csv"]
+    if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "UNSUPPORTED_FORMAT", "message": f"Formato de archivo no soportado. Solo se permiten: {', '.join(allowed_extensions)}"}
+        )
 
     MAX_FILE_SIZE = 50 * 1024 * 1024 # 50MB
     
     try:
         content = await file.read()
         if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail="El archivo es demasiado grande (máx 50MB)")
+            return JSONResponse(
+                status_code=400,
+                content={"error_code": "FILE_TOO_LARGE", "message": "El archivo es demasiado grande (máx 50MB)"}
+            )
         
         if len(content) == 0:
-            raise HTTPException(status_code=400, detail="El archivo está vacío")
+            return JSONResponse(
+                status_code=400,
+                content={"error_code": "INVALID_FILE", "message": "El archivo está vacío (0 bytes)"}
+            )
 
         # 1. BRONZE: Ingesta (Docling/Fallback)
         ingest_result = await ingest_service.ingest_file(
@@ -161,5 +176,8 @@ async def create_session(file: UploadFile = File(...)):
 async def get_session(session_id: str):
     session = await session_repo.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
+        )
     return SessionResponse(**session)

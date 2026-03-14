@@ -1,0 +1,6 @@
+id,nombre completo,salario,fecha,vacío
+1,María García,75000.50,2024-01-15,
+2,,82000,,dato
+3,José López,-1,2024-13-99,
+4,Ana María,NaN,2024-06-01,
+5,Test 🎉,999999999,2024-12-31,valor

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from datetime import datetime
 from app.schemas.report import AnalysisReport, ProvenanceInfo
 from app.repositories.mongo import session_repo
@@ -14,8 +15,28 @@ async def get_analysis_report(session_id: str):
     bronze = await session_repo.get_bronze(session_id)
     session = await session_repo.get_session(session_id)
     
-    if not silver or not session:
-        raise HTTPException(status_code=404, detail="Análisis no encontrado para esta sesión")
+    if not session:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
+        )
+        
+    if not silver:
+        # Verificar si la sesión falló
+        if session.get("status") == "error":
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error_code": "ANALYSIS_FAILED", 
+                    "message": "El análisis de esta sesión falló durante el procesamiento",
+                    "details": {"quality_decision": session.get("quality_decision")}
+                }
+            )
+        
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "REPORT_NOT_FOUND", "message": "No se encontró el reporte para esta sesión"}
+        )
     
     # Construir provenance
     provenance = ProvenanceInfo(
