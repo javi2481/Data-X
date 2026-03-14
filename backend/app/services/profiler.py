@@ -50,7 +50,7 @@ class ProfilerService:
                 col_profile.update({
                     "min_length": int(lengths.min()) if not lengths.empty else 0,
                     "max_length": int(lengths.max()) if not lengths.empty else 0,
-                    "top_values": series.value_counts().head(5).to_dict()
+                    "top_values": [{"value": str(k), "count": int(v)} for k, v in series.value_counts().head(5).items()]
                 })
 
             profile_data[col] = col_profile

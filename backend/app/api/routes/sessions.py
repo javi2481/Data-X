@@ -138,7 +138,7 @@ async def create_session(file: UploadFile = File(...)):
         # 3. Sesión principal
         session_data = {
             "session_id": session_id,
-            "status": "ready" if gate_result["status"] != "fail" else "error",
+            "status": "ready" if gate_result["status"] != "reject" else "error",
             "created_at": ingested_at,
             "source_metadata": source_metadata,
             "quality_decision": gate_result["status"],

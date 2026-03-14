@@ -11,7 +11,7 @@ def setup_telemetry(app):
     """
     # Configurar el Resource con el nombre del servicio
     resource = Resource(attributes={
-        SERVICE_NAME: settings.PROJECT_NAME
+        SERVICE_NAME: settings.otel_service_name
     })
 
     # Crear el TracerProvider
