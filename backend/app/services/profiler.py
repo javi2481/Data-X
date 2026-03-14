@@ -1,6 +1,10 @@
 ﻿import pandas as pd
 import numpy as np
 from pandas import DataFrame
+import structlog
+import time
+
+logger = structlog.get_logger(__name__)
 
 class ProfilerService:
     def _clean_value(self, val):
@@ -15,6 +19,9 @@ class ProfilerService:
         """
         Genera un perfil detallado de cada columna en el DataFrame.
         """
+        start_time = time.time()
+        logger.info("profiling_start", columns=len(df.columns), rows=len(df))
+        
         profile_data = {}
         total_rows = len(df)
 
@@ -63,4 +70,6 @@ class ProfilerService:
 
             profile_data[col] = col_profile
 
+        duration = time.time() - start_time
+        logger.info("profiling_complete", duration_sec=round(duration, 3))
         return profile_data

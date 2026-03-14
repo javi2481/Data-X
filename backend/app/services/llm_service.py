@@ -2,7 +2,8 @@
 from app.core.config import settings
 import structlog
 import json
-from typing import Optional
+import asyncio
+from typing import Optional, Any
 
 logger = structlog.get_logger(__name__)
 
@@ -12,6 +13,36 @@ class LLMService:
         self.api_key = settings.litellm_api_key
         # Configurar litellm
         litellm.api_key = self.api_key
+
+    async def _call_llm(self, messages: list, **kwargs) -> Any:
+        """
+        Llamada a LiteLLM con retry manual y backoff exponencial.
+        """
+        retries = 2
+        delay = 1
+        last_exception = None
+
+        for attempt in range(retries + 1):
+            try:
+                # El intento inicial es el 0, los otros son retries
+                if attempt > 0:
+                    logger.info("llm_call_retry", attempt=attempt, delay=delay)
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                
+                response = await litellm.acompletion(
+                    model=self.model,
+                    messages=messages,
+                    timeout=30,
+                    num_retries=0, # Desactivamos el retry interno de litellm
+                    **kwargs
+                )
+                return response
+            except Exception as e:
+                last_exception = e
+                logger.warning("llm_call_failed_attempt", attempt=attempt+1, error=str(e))
+        
+        raise last_exception
 
     async def generate_explanation(self, finding: dict, dataset_context: dict) -> str:
         """
@@ -30,17 +61,14 @@ class LLMService:
             Responde solo con la explicación, sin encabezados ni introducciones.
             """
             
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30,
-                num_retries=1
+            response = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}]
             )
             explanation = response.choices[0].message.content.strip()
             logger.info("llm_explanation_generated", finding_id=finding.get("finding_id"))
             return explanation
         except Exception as e:
-            logger.error("llm_explanation_failed", error=str(e), finding_id=finding.get("finding_id"))
+            logger.error("llm_explanation_all_retries_failed", error=str(e), finding_id=finding.get("finding_id"))
             return finding.get("explanation", "Error al generar explicación inteligente.")
 
     async def generate_executive_summary(self, report_data: dict) -> str:
@@ -58,17 +86,14 @@ class LLMService:
             Sé conciso y resalta los puntos clave sobre la calidad y el contenido del dataset.
             """
             
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30,
-                num_retries=1
+            response = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}]
             )
             summary = response.choices[0].message.content.strip()
             logger.info("llm_summary_generated")
             return summary
         except Exception as e:
-            logger.error("llm_summary_failed", error=str(e))
+            logger.error("llm_summary_all_retries_failed", error=str(e))
             overview = report_data.get("dataset_overview", {})
             return f"Análisis completado. El dataset tiene {overview.get('row_count', 0)} registros con {len(report_data.get('findings', []))} alertas detectadas."
 
@@ -97,18 +122,15 @@ class LLMService:
             }}
             """
             
-            response = await litellm.acompletion(
-                model=self.model,
+            response = await self._call_llm(
                 messages=[{"role": "user", "content": prompt}],
-                timeout=30,
-                num_retries=1,
                 response_format={"type": "json_object"}
             )
             result = json.loads(response.choices[0].message.content)
             logger.info("llm_query_answered", query=query)
             return result
         except Exception as e:
-            logger.error("llm_query_failed", error=str(e), query=query)
+            logger.error("llm_query_all_retries_failed", error=str(e), query=query)
             return {
                 "answer": "No se pudo procesar la consulta inteligente en este momento.",
                 "relevant_findings": [],

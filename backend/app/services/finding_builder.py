@@ -3,6 +3,10 @@ from uuid import uuid4
 from typing import List
 from app.schemas.finding import Finding, Evidence
 from app.services.explanation_templates import render_explanation
+import structlog
+import time
+
+logger = structlog.get_logger(__name__)
 
 class FindingBuilder:
     def __init__(self):
@@ -186,6 +190,12 @@ class FindingBuilder:
         return findings
 
     def build_all_findings(self, df: pd.DataFrame, eda_results: dict = None, schema_results: list = None) -> List[Finding]:
+        """
+        Ejecuta todos los checks y consolida los hallazgos.
+        """
+        start_time = time.time()
+        logger.info("build_findings_start")
+        
         all_findings = []
         # Detectar dataset vacío primero
         empty_findings = self.detect_empty_dataset(df)
@@ -211,6 +221,9 @@ class FindingBuilder:
                 all_findings.extend(self.detect_outliers_findings(eda_results["outliers"]))
             if "distributions" in eda_results:
                 all_findings.extend(self.detect_distribution_issues(eda_results["distributions"]))
+        
+        duration = time.time() - start_time
+        logger.info("build_findings_complete", count=len(all_findings), duration_sec=round(duration, 3))
                 
         return all_findings
 

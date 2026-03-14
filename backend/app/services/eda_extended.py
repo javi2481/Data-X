@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from typing import List, Dict, Any
+import structlog
+import time
+
+logger = structlog.get_logger(__name__)
 
 class EDAExtendedService:
     def __init__(self):
@@ -11,6 +15,9 @@ class EDAExtendedService:
         """
         Calcula la matriz de correlación de Pearson para columnas numéricas.
         """
+        start_time = time.time()
+        logger.info("compute_correlations_start", columns=len(df.columns))
+        
         numeric_df = df.select_dtypes(include=[np.number])
         if numeric_df.empty or numeric_df.shape[1] < 2:
             return {"matrix": {}, "strong_correlations": []}
@@ -47,6 +54,9 @@ class EDAExtendedService:
                         "significant": bool(p_value < 0.05),
                         "classification": classification
                     })
+        
+        duration = time.time() - start_time
+        logger.info("compute_correlations_complete", duration_sec=round(duration, 3))
         
         return {
             "matrix": corr_matrix.to_dict(),

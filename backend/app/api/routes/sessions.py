@@ -74,14 +74,34 @@ async def create_session(file: UploadFile = File(...)):
                 content={"error_code": "INVALID_FILE", "message": "El archivo está vacío (0 bytes)"}
             )
 
-        # 1. BRONZE: Ingesta (Docling/Fallback)
-        ingest_result = await ingest_service.ingest_file(
-            file_bytes=content,
-            filename=file.filename,
-            content_type=file.content_type or "text/csv"
-        )
+        # 1. BRONZE: Ingesta (Docling/Fallback) con timeout de 60s
+        import asyncio
+        import time
+        start_time = time.time()
+        
+        try:
+            ingest_result = await asyncio.wait_for(
+                ingest_service.ingest_file(
+                    file_bytes=content,
+                    filename=file.filename,
+                    content_type=file.content_type or "text/csv"
+                ),
+                timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                status_code=400,
+                content={"error_code": "PROCESSING_TIMEOUT", "message": "Archivo demasiado grande o complejo para procesar (timeout 60s)"}
+            )
         
         df = ingest_result["dataframe"]
+        
+        # Validar que el DataFrame no esté vacío
+        if df.empty or len(df.columns) == 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error_code": "INVALID_FILE", "message": "El archivo no contiene datos válidos o columnas legibles"}
+            )
         source_metadata = ingest_result["source_metadata"]
         conversion_metadata = ingest_result["conversion_metadata"]
         
@@ -158,9 +178,9 @@ async def create_session(file: UploadFile = File(...)):
         # Charts (ACTUALIZADO para Corte 2)
         charts = chart_spec_generator.generate_all_charts(df, findings, eda_results=eda_results)
 
-        # Preview de datos (convertir NaN a None para JSON)
-        preview_df = df.head(50).where(df.head(50).notna(), None)
-        data_preview = preview_df.to_dict(orient="records")
+        # Preview de datos (usar helper de serialización segura)
+        from app.core.serialization import clean_data_for_json
+        data_preview = clean_data_for_json(df.head(50))
 
         silver_record = SilverRecord(
             session_id=session_id,
@@ -201,6 +221,11 @@ async def create_session(file: UploadFile = File(...)):
             await session_repo.save_gold(gold_record.model_dump())
 
         # 4. Sesión principal
+        duration = time.time() - start_time
+        from app.core.logging import get_logger
+        struct_logger = get_logger(__name__)
+        struct_logger.info("session_processing_complete", session_id=session_id, duration_sec=round(duration, 2))
+
         session_data = {
             "session_id": session_id,
             "status": "ready" if gate_result["status"] != "reject" else "error",

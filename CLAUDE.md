@@ -24,9 +24,11 @@ data-x/
 - **Arquitectura Medallion (v3.0).** Los datos fluyen de Bronze (Raw) a Silver (Processed/EDA).
 - **Backend calculates, frontend renders.** El backend genera Findings y ChartSpecs.
 - **Finding as Unit of Value.** El análisis se organiza en hallazgos (Findings) detectados.
-- **Docling-first ingestion.** Ingesta unificada con Docling (fallback a pandas para CSV).
+- **Docling-first ingestion.** Ingesta unificada con Docling (soporta CSV, XLSX, PDF).
+- **Pandera schema validation.** Validación automática de esquemas en el pipeline Silver.
 - **Deterministic layer.** Perfilado, validación y generación de especificaciones son determinísticos.
-- **LiteLLM (Desactivado en Corte 1).** El LLM solo se usará en fases posteriores para interpretación.
+- **LiteLLM (Capa Gold).** Interpretación de datos mediante IA con mecanismo de retry y fallback determinístico.
+- **Tests-first.** Suite de pruebas formal con pytest para asegurar la integridad del pipeline.
 - **API-first.** El sistema funciona independientemente del frontend mediante la API `/api/*`.
 - **Contracts are sacred.** Pydantic schemas (v2) son la fuente de verdad.
 
@@ -87,6 +89,9 @@ All responses include `contract_version: "v1"`.
 # Backend
 cd backend && pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
+
+# Backend Tests
+cd backend && python -m pytest tests/ -v
 
 # Frontend
 cd frontend && npm install && npm run dev

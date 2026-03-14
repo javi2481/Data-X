@@ -42,9 +42,14 @@ async def add_request_id(request: Request, call_next):
     return response
 
 # Configurar CORSMiddleware
+cors_origins = settings.cors_origins
+# Soporte para lista separada por comas si no es una lista real
+if isinstance(cors_origins, str):
+    cors_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,6 +58,8 @@ app.add_middleware(
 # Exception Handlers
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
+    from app.core.logging import logger
+    logger.warning("validation_error", error=str(exc))
     return JSONResponse(
         status_code=400,
         content={"error_code": "VALIDATION_ERROR", "message": str(exc)},
@@ -60,10 +67,13 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    # En producción usaríamos un logger aquí
+    import traceback
+    from app.core.logging import logger
+    logger.error("internal_error", error=str(exc), traceback=traceback.format_exc())
+    
     return JSONResponse(
         status_code=500,
-        content={"error_code": "INTERNAL_ERROR", "message": f"Ha ocurrido un error inesperado: {str(exc)}"},
+        content={"error_code": "INTERNAL_ERROR", "message": "Ha ocurrido un error inesperado en el servidor."},
     )
 
 # Registrar routers (prefijo /api)
