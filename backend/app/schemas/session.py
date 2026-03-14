@@ -9,4 +9,5 @@ class SessionResponse(BaseModel):
     source_metadata: dict
     schema_info: Optional[dict] = None
     profile: Optional[dict] = None
+    quality_gate: Optional[dict] = None
     contract_version: str = "v1"

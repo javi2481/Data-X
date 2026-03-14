@@ -8,18 +8,17 @@ from app.services.ingest import IngestService
 from app.services.normalization import NormalizationService
 from app.services.validation import ValidationService
 from app.services.profiler import ProfilerService
+from app.services.docling_quality_gate import DoclingQualityGate
 from app.repositories.mongo import session_repo
 from app.services.provenance import provenance_service
 
 router = APIRouter()
 
-# SESSION_STORE removido, ahora usamos MongoDB via session_repo
-# TODO: Emergent migrará SESSION_STORE a MongoDB -> HECHO
-
 ingest_service = IngestService()
 normalization_service = NormalizationService()
 validation_service = ValidationService()
 profiler_service = ProfilerService()
+quality_gate = DoclingQualityGate()
 
 @router.post("", response_model=SessionResponse)
 async def create_session(file: UploadFile = File(...)):
@@ -34,7 +33,7 @@ async def create_session(file: UploadFile = File(...)):
     try:
         content = await file.read()
         
-        # 1. Ingesta
+        # 1. Ingesta (ahora incluye Docling/Fallback)
         ingest_result = await ingest_service.ingest_file(
             file_bytes=content,
             filename=file.filename,
@@ -44,60 +43,60 @@ async def create_session(file: UploadFile = File(...)):
         df = ingest_result["dataframe"]
         schema_info = ingest_result["schema_info"]
         source_metadata = ingest_result["source_metadata"]
+        conversion_metadata = ingest_result["conversion_metadata"]
         
-        # 2. Normalización
+        # 2. Quality Gate
+        gate_result = quality_gate.evaluate(conversion_metadata)
+        
+        # 3. Normalización
         df = normalization_service.normalize(df)
         
-        # 3. Validación
+        # 4. Validación
         alerts = validation_service.validate(df, schema_info)
         
-        # 4. Perfilado de datos
+        # 5. Perfilado de datos
         profile = profiler_service.profile(df)
         
         # Actualizar schema_info después de normalización
         schema_info["columns"] = list(df.columns)
         schema_info["row_count"] = len(df)
         
-        # 4. Persistir en MongoDB
+        # 6. Persistir en MongoDB
         session_id = f"sess_{uuid.uuid4()}"
         created_at = datetime.utcnow()
         
-        # El DataFrame NO se guarda en Mongo (se podría persistir en S3/GridFS luego)
-        # Por ahora lo guardamos en un caché volátil si fuera necesario, 
-        # pero para cumplir el flujo lo re-procesaremos o guardaremos resultados.
-        # En una app real, el DF se serializaría a Parquet y se subiría a Object Storage.
-        
+        # Provenance incluye info de ingesta
+        steps = [
+            {"step": "ingest", "method": conversion_metadata["method"], "timestamp": created_at},
+            {"step": "quality_gate", "status": gate_result["status"], "timestamp": created_at},
+            {"step": "normalize", "timestamp": created_at},
+            {"step": "validate", "timestamp": created_at},
+            {"step": "profile", "timestamp": created_at},
+            {"step": "persist", "timestamp": created_at}
+        ]
+
         session_data = {
             "session_id": session_id,
-            "status": "ready",
+            "status": "ready" if gate_result["status"] != "fail" else "error",
             "created_at": created_at,
             "source_metadata": source_metadata,
             "schema_info": schema_info,
             "profile": profile,
             "alerts": alerts,
-            "provenance": [
-                {"step": "ingest", "timestamp": created_at},
-                {"step": "normalize", "timestamp": created_at},
-                {"step": "validate", "timestamp": created_at},
-                {"step": "profile", "timestamp": created_at},
-                {"step": "persist", "timestamp": created_at}
-            ]
+            "quality_gate": gate_result,
+            "provenance": steps
         }
         
         await session_repo.create_session(session_data)
         
-        # Nota: Mantener el DF en memoria para la sesión actual si se requiere
-        # Para este ejercicio, como el endpoint /analyze se llama justo después,
-        # podríamos tener un problema si el servidor reinicia.
-        # Pero siguiendo el prompt, migramos a MongoDB.
-        
         return SessionResponse(
             session_id=session_id,
-            status="ready",
+            status="ready" if gate_result["status"] != "fail" else "error",
             created_at=created_at,
             source_metadata=source_metadata,
             schema_info=schema_info,
-            profile=profile
+            profile=profile,
+            quality_gate=gate_result
         )
         
     except ValueError as e:
