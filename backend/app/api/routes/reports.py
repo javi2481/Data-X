@@ -18,6 +18,7 @@ async def get_analysis_report(session_id: str):
     silver = await session_repo.get_silver(session_id)
     bronze = await session_repo.get_bronze(session_id)
     session = await session_repo.get_session(session_id)
+    gold = await session_repo.get_gold(session_id)
     
     if not session:
         return JSONResponse(
@@ -64,6 +65,9 @@ async def get_analysis_report(session_id: str):
     filename = bronze.get("original_filename", "dataset") if bronze else "dataset"
     summary = f"Dataset '{filename}' con {overview.get('row_count', 0)} filas y {overview.get('column_count', 0)} columnas. Se detectaron {finding_count} findings: {critical} críticos, {warnings} advertencias, {info} informativos."
 
+    executive_summary = gold.get("executive_summary") if gold else summary
+    enriched_explanations = gold.get("enriched_explanations", {}) if gold else {}
+
     return AnalysisReport(
         session_id=session_id,
         status="completed",
@@ -72,7 +76,9 @@ async def get_analysis_report(session_id: str):
         findings=silver.get("findings", []),
         chart_specs=silver.get("chart_specs", []),
         data_preview=silver.get("data_preview", []),
+        executive_summary=executive_summary,
         explanations=explanations,
+        enriched_explanations=enriched_explanations,
         provenance=provenance,
         contract_version="v1",
         generated_at=datetime.utcnow()

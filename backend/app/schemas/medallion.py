@@ -54,3 +54,11 @@ class SilverRecord(BaseModel):
     chart_specs: List[Dict[str, Any]]  # List of ChartSpec dicts
     data_preview: List[Dict[str, Any]] = []  # Primeras N filas del dataset
     processed_at: datetime
+
+class GoldRecord(BaseModel):
+    """Enriched insights using LLM"""
+    session_id: str
+    executive_summary: str
+    enriched_explanations: Dict[str, str]  # finding_id -> LLM explanation
+    recommendations: List[str]
+    generated_at: datetime

@@ -6,13 +6,15 @@ from typing import Any
 
 from app.schemas.session import SessionResponse
 from app.schemas.analyze import ErrorResponse
-from app.schemas.medallion import BronzeRecord, SilverRecord, DatasetOverview, ColumnProfile
+from app.schemas.medallion import BronzeRecord, SilverRecord, GoldRecord, DatasetOverview, ColumnProfile
 from app.services.ingest import IngestService
 from app.services.normalization import NormalizationService
 from app.services.profiler import ProfilerService
 from app.services.docling_quality_gate import DoclingQualityGate
 from app.services.finding_builder import FindingBuilder
 from app.services.chart_spec_generator import ChartSpecGenerator
+from app.services.eda_extended import EDAExtendedService
+from app.services.llm_service import LLMService
 from app.repositories.mongo import session_repo
 
 router = APIRouter()
@@ -23,6 +25,8 @@ profiler_service = ProfilerService()
 quality_gate = DoclingQualityGate()
 finding_builder = FindingBuilder()
 chart_spec_generator = ChartSpecGenerator()
+eda_service = EDAExtendedService()
+llm_service = LLMService()
 
 @router.post("", 
     response_model=SessionResponse, 
@@ -96,12 +100,19 @@ async def create_session(file: UploadFile = File(...)):
         
         await session_repo.save_bronze(bronze_record.model_dump())
 
-        # 2. SILVER: Normalización + Perfilado + Findings + Charts
+        # 2. SILVER: Normalización + Perfilado + EDA Extendido + Findings + Charts
         # Normalización
         df = normalization_service.normalize(df)
         
         # Perfilado
         profile_data = profiler_service.profile(df)
+        
+        # EDA Extendido (Corte 2)
+        eda_results = {
+            "correlations": eda_service.compute_correlations(df),
+            "outliers": eda_service.detect_all_outliers(df),
+            "distributions": eda_service.analyze_distributions(df)
+        }
         
         column_profiles = []
         for col_name, col_data in profile_data.items():
@@ -133,11 +144,11 @@ async def create_session(file: UploadFile = File(...)):
             duplicate_percent=float(df.duplicated().sum() / len(df)) if len(df) > 0 else 0.0
         )
 
-        # Findings
-        findings = finding_builder.build_all_findings(df)
+        # Findings (ACTUALIZADO para Corte 2)
+        findings = finding_builder.build_all_findings(df, eda_results=eda_results)
         
-        # Charts
-        charts = chart_spec_generator.generate_all_charts(df, findings)
+        # Charts (ACTUALIZADO para Corte 2)
+        charts = chart_spec_generator.generate_all_charts(df, findings, eda_results=eda_results)
 
         # Preview de datos (convertir NaN a None para JSON)
         preview_df = df.head(50).where(df.head(50).notna(), None)
@@ -155,7 +166,33 @@ async def create_session(file: UploadFile = File(...)):
         
         await session_repo.save_silver(silver_record.model_dump())
 
-        # 3. Sesión principal
+        # 3. GOLD (NUEVO Corte 2): Summary + Enriched Explanations
+        if llm_service.api_key:
+            report_data_for_llm = {
+                "dataset_overview": overview.model_dump(),
+                "findings": [f.model_dump() for f in findings],
+                "column_profiles": [cp.model_dump() for cp in column_profiles]
+            }
+            
+            executive_summary = await llm_service.generate_executive_summary(report_data_for_llm)
+            
+            # Enriquecer solo los más importantes (critical y warning)
+            enriched_explanations = {}
+            for f in findings:
+                if f.severity in ["critical", "warning"]:
+                    enriched = await llm_service.generate_explanation(f.model_dump(), report_data_for_llm["dataset_overview"])
+                    enriched_explanations[f.finding_id] = enriched
+            
+            gold_record = GoldRecord(
+                session_id=session_id,
+                executive_summary=executive_summary,
+                enriched_explanations=enriched_explanations,
+                recommendations=["Revisar los hallazgos críticos de calidad", "Verificar correlaciones fuertes detectadas"],
+                generated_at=datetime.utcnow()
+            )
+            await session_repo.save_gold(gold_record.model_dump())
+
+        # 4. Sesión principal
         session_data = {
             "session_id": session_id,
             "status": "ready" if gate_result["status"] != "reject" else "error",

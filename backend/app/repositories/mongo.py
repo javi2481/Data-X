@@ -20,6 +20,12 @@ class SessionRepository:
             raise RuntimeError("Base de datos no inicializada. Llama a connect_to_db primero.")
         return db.db["silver"]
 
+    @property
+    def gold(self):
+        if db.db is None:
+            raise RuntimeError("Base de datos no inicializada. Llama a connect_to_db primero.")
+        return db.db["gold"]
+
     async def create_session(self, session_data: dict[str, Any]) -> str:
         """
         Guarda una nueva sesión en MongoDB.
@@ -51,8 +57,15 @@ class SessionRepository:
         result = await self.silver.insert_one(silver_data)
         return str(result.inserted_id)
 
+    async def save_gold(self, gold_data: dict[str, Any]) -> str:
+        result = await self.gold.insert_one(gold_data)
+        return str(result.inserted_id)
+
     async def get_silver(self, session_id: str) -> Optional[dict[str, Any]]:
         return await self.silver.find_one({"session_id": session_id})
+
+    async def get_gold(self, session_id: str) -> Optional[dict[str, Any]]:
+        return await self.gold.find_one({"session_id": session_id})
 
     async def get_bronze(self, session_id: str) -> Optional[dict[str, Any]]:
         return await self.bronze.find_one({"session_id": session_id})

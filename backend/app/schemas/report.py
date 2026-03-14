@@ -17,7 +17,9 @@ class AnalysisReport(BaseModel):
     findings: List[Dict[str, Any]]
     chart_specs: List[Dict[str, Any]]
     data_preview: List[Dict[str, Any]] = []  # Primeras filas para previsualización
+    executive_summary: Optional[str] = None
     explanations: Dict[str, str] = {}  # finding_id -> explanation text
+    enriched_explanations: Dict[str, str] = {}  # finding_id -> LLM explanation (si disponible)
     provenance: ProvenanceInfo
     contract_version: str = "v1"
     generated_at: datetime
