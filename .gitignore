@@ -1,111 +1,93 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ============================================
+# Data-X Repository .gitignore
+# ============================================
 
-# IDE and editors
-.idea/
-.vscode/
-
-# Dependencies
-node_modules/
-/node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# Testing
-/coverage
-
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
-
-# Production builds
-/build
-dist/
-dist
-
-# Environment files (comprehensive coverage)
-
+# ----- Environment & Secrets -----
+.env
+.env.*
+*.env
 *token.json*
 *credentials.json*
+*.pem
 
-# Logs and debug files
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ----- Node.js / Frontend -----
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# ----- Next.js -----
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# ----- IDEs & Editors -----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ----- OS Files -----
+.DS_Store
+Thumbs.db
+
+# ----- Testing -----
+coverage/
+test_reports/
+test_result.md
+
+# ----- Builds -----
+dist/
+build/
+*.pack
+
+# ----- Data & Large Files -----
+datasets/
+*.csv
+*.xlsx
+*.zip
+*.tar.gz
+*.tar
+*.tgz
+
+# ----- Logs -----
+*.log
+logs/
 dump.rdb
 
-# System files
-.DS_Store
-*.pem
+# ----- Cache -----
+.cache/
+.ruff_cache/
 
-# Python
-__pycache__/
-*pyc*
-venv/
-.venv/
-
-# Development tools
+# ----- Misc -----
+.vercel
 chainlit.md
 .chainlit
 .ipynb_checkpoints/
-.ac
-
-# Deployment
-.vercel
-
-# Data and databases
-agenthub/agents/youtube/db
-
-# Archive files and large assets
-**/*.zip
-**/*.tar.gz
-**/*.tar
-**/*.tgz
-*.pack
-*.deb
-*.dylib
-
-# Build caches
-.cache/
-
-# Mobile development
-android-sdk/ data-x-audit/frontend/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
-data-x-audit/frontend/node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
-data-x-audit/frontend/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
-data-x-audit/backend/.venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+frontend/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
+frontend/node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
+backend/.venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so
