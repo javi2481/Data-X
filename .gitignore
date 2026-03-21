@@ -91,3 +91,7 @@ chainlit.md
 frontend/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
 frontend/node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
 backend/.venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so
+-e 
+# Environment files
+*.env
+*.env.*
