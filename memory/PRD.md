@@ -213,13 +213,87 @@ Comprehensive analysis document:
 
 ---
 
+## Sprint 3: Production Readiness ✅ COMPLETED
+
+### What was implemented
+
+#### 1. Motor → PyMongo Async Migration (`backend/app/db/client.py`)
+
+**Migrated from deprecated Motor to PyMongo native Async API:**
+- Replaced `AsyncIOMotorClient` with `AsyncMongoClient`
+- Updated `requirements.txt`: removed `motor`, updated `pymongo>=4.10.0,<4.17`
+- No code changes needed in repository layer (API compatible)
+
+**Benefits:**
+- Better latency and throughput
+- Single dependency instead of two
+- Future-proof (Motor EOL May 2026)
+
+#### 2. PDFPageViewer Component (`frontend/src/components/PDFPageViewer.tsx`)
+
+New React component for document visualization:
+- PDF page display with zoom controls (0.5x - 3x)
+- Bounding box overlays for provenance highlighting
+- Fullscreen mode
+- Page navigation (prev/next)
+- Toggle highlight visibility
+- Coordinate conversion (TOPLEFT/BOTTOMLEFT origins)
+- Click handlers for highlight interaction
+- Helper function `sourceLocationToHighlight`
+
+#### 3. Performance Optimizer (`backend/app/services/performance_optimizer.py`)
+
+New service for handling large documents:
+
+**BatchProcessor:**
+- Process items in configurable batch sizes
+- Async variant with thread pool
+- Progress logging
+
+**ChunkIterator:**
+- Lazy iteration over large text/lists
+- Configurable chunk size and overlap
+- Memory-efficient streaming
+
+**DocumentCache:**
+- LRU eviction strategy
+- Configurable max size
+- Access-order tracking
+
+**EmbeddingCache:**
+- Specialized for embedding storage
+- Hash-based deduplication
+- Auto-eviction at capacity
+
+**estimate_processing_time:**
+- Time estimation utility
+- Automatic recommendations
+
+### Tests Added
+- PyMongo Async import verification
+- BatchProcessor batch processing
+- ChunkIterator text chunking
+- DocumentCache LRU behavior
+- EmbeddingCache storage/retrieval
+- Time estimation accuracy
+- Singleton pattern verification
+
+### Design Decisions
+
+1. **Drop-in replacement**: PyMongo Async API is compatible with Motor's interface
+2. **Coordinate system handling**: PDFPageViewer supports both TOPLEFT and BOTTOMLEFT origins
+3. **LRU caching**: Efficient memory management for large document workflows
+4. **Lazy iteration**: ChunkIterator avoids loading entire documents into memory
+
+---
+
 ## Upcoming Tasks
 
-### Sprint 3: Production Readiness (P1)
-- [ ] Migrate from Motor to PyMongo Async API (Motor EOL May 2026)
-- [ ] Implement uv migration for faster CI/CD
-- [ ] Add PDF page viewer with bbox highlighting
-- [ ] Performance optimization for large documents
+### Sprint 4: uv Migration & Final Polish (P1)
+- [ ] Implement uv migration (replace pip)
+- [ ] Update CI/CD for uv
+- [ ] Add pyproject.toml (optional)
+- [ ] Final documentation updates
 
 ---
 
@@ -229,3 +303,4 @@ Comprehensive analysis document:
 - Export provenance to standard formats
 - Real-time collaboration features
 - Internationalization (i18n)
+- PDF rendering server-side (page image generation)
