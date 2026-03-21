@@ -1,0 +1,18 @@
+{
+  "PostToolUse": [
+    {
+      "matcher": "Edit(backend/**/*.py)",
+      "command": "cd backend && ruff check --fix $FILE"
+    },
+    {
+      "matcher": "Edit(frontend/src/**/*.ts|*.tsx)",
+      "command": "cd frontend && npx eslint $FILE --fix"
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "Bash(git push*)",
+      "command": "cd backend && python -m pytest tests/ -q"
+    }
+  ]
+}
