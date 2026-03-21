@@ -100,3 +100,4 @@ data-x-audit/frontend/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm6
 # Environment files
 *.env
 *.env.*
+data-x-audit/backend/.venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so
