@@ -142,18 +142,90 @@ New test file with:
 
 ---
 
+## Sprint 2: Enhanced Document Intelligence ✅ COMPLETED
+
+### What was implemented
+
+#### 1. Motor/PyMongo Compatibility Fix
+
+**Problem**: Motor 3.3.1 incompatible with PyMongo 4.16.0 (`_QUERY_OPTIONS` import error)
+
+**Solution**: Pinned versions in `requirements.txt`:
+```
+pymongo>=4.5.0,<4.9
+motor>=3.3.0,<3.6
+```
+
+**Note**: Motor is deprecated (EOL May 2026). Future migration to PyMongo Async API recommended.
+
+#### 2. SuggestedQuestionsService (`backend/app/services/suggested_questions_service.py`)
+
+New service for generating contextual questions:
+- Questions based on finding categories and severity
+- Questions from document structure (headings, sections)
+- Questions from table metadata
+- Priority-based ordering
+- Deduplication
+- Template-based generation
+
+#### 3. Suggested Questions API Endpoint (`backend/app/api/routes/analyze.py`)
+
+New endpoint: `GET /api/analyze/{session_id}/suggested-questions`
+- Returns prioritized questions
+- Context-aware generation
+- Rate limited (100/hour)
+
+#### 4. SuggestedQuestions Component (`frontend/src/components/SuggestedQuestions.tsx`)
+
+New React component:
+- Displays contextual questions with icons
+- Click to fill query input
+- Collapsible panel
+- Refresh capability
+- Category-based coloring
+
+#### 5. QueryPanel Integration
+
+- SuggestedQuestions shown when no result displayed
+- Click fills query input automatically
+
+#### 6. DocumentContextPanel Enhancement (`frontend/src/components/DocumentContextPanel.tsx`)
+
+Functional table selector:
+- Visual indication of selected table
+- Confidence score display
+- Click to select different table
+- Loading state during re-analysis
+- Expandable context viewer
+
+#### 7. uv Migration Analysis (`docs/UV_MIGRATION_ANALYSIS.md`)
+
+Comprehensive analysis document:
+- Comparison pip vs uv
+- Migration plan phases
+- Risk assessment
+- Timeline recommendations
+- **Recommendation**: Proceed with uv migration
+
+### Tests Added
+- SuggestedQuestionsService: 8 unit tests
+- Motor/PyMongo import verification
+
+---
+
 ## Upcoming Tasks
 
-### Sprint 2: Enhanced Document Intelligence (P1)
-- [ ] Generate suggested questions from document structure
-- [ ] Add functional table selector in UI
-- [ ] Update documentation
+### Sprint 3: Production Readiness (P1)
+- [ ] Migrate from Motor to PyMongo Async API (Motor EOL May 2026)
+- [ ] Implement uv migration for faster CI/CD
+- [ ] Add PDF page viewer with bbox highlighting
+- [ ] Performance optimization for large documents
 
 ---
 
 ## Backlog (Future)
-- PDF page viewer with bbox highlighting
 - Multi-document session support
 - Document comparison features
 - Export provenance to standard formats
 - Real-time collaboration features
+- Internationalization (i18n)
