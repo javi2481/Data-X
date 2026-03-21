@@ -67,7 +67,9 @@ build/
 
 # ----- Data & Large Files -----
 datasets/
+# Data files (except test fixtures)
 *.csv
+!backend/tests/fixtures/*.csv
 *.xlsx
 *.zip
 *.tar.gz
