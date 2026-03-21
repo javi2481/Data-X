@@ -105,3 +105,7 @@ data-x-audit/backend/.venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.s
 # Environment files
 *.env
 *.env.*
+-e 
+# Environment files
+*.env
+*.env.*
