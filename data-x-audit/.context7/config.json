@@ -1,0 +1,18 @@
+{
+  "libraries": [
+    "fastapi",
+    "pydantic",
+    "motor",
+    "litellm",
+    "docling",
+    "pandera",
+    "pingouin",
+    "sentence-transformers",
+    "faiss",
+    "nextjs",
+    "shadcn-ui",
+    "recharts",
+    "tailwindcss",
+    "jspdf"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(winget upgrade:*)",
+      "Bash(find . -type f -name \"*.py\" -o -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.json\" -o -name \"*.md\" -o -name \"*.yml\" -o -name \"*.yaml\" -o -name \"*.toml\" -o -name \"*.txt\" -o -name \"Dockerfile*\" -o -name \".env*\" 2>/dev/null | head -200)",
+      "Bash(rm -f CLAUDE.md && ln -s AGENTS.md CLAUDE.md && ls -la CLAUDE.md)",
+      "Bash(rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md && cat CLAUDE.md | head -5)",
+      "Bash(rm -f CLAUDE.md && ln -s AGENTS.md CLAUDE.md)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh run:*)",
+      "Bash(git -C /c/Users/Equipo/IdeaProjects/data-x ls-files frontend/package-lock.json)",
+      "Bash(git -C /c/Users/Equipo/IdeaProjects/data-x status frontend/ --short)",
+      "Bash(git submodule:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docling-project.github.io)",
+      "Bash(\\\\ git:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}
