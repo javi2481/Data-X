@@ -31,7 +31,7 @@ Auditar el repositorio Data-X existente, cruzar con el ecosistema Docling oficia
 
 ---
 
-## Sprint 0: Foundation of Provenance ✅ COMPLETED (2024-12-XX)
+## Sprint 0: Foundation of Provenance ✅ COMPLETED
 
 ### What was implemented
 
@@ -77,43 +77,76 @@ Updated `create_session` to pass `document_payload` to chunking service.
 - `test_chunking_provenance.py`: 10+ unit tests for provenance extraction
 - Updated `test_embeddings.py` for new signature
 
+---
+
+## Sprint 1: HybridChunker Integration ✅ COMPLETED
+
+### What was implemented
+
+#### 1. DoclingChunkingService (`backend/app/services/docling_chunking_service.py`)
+
+New service using Docling's HybridChunker:
+- Token-aware chunk sizing (default 512 tokens, configurable)
+- Uses HuggingFace tokenizer (sentence-transformers/all-MiniLM-L6-v2)
+- Preserves document hierarchy (headings, sections)
+- Extracts full provenance (page, bbox, heading path)
+- Falls back to legacy DocumentChunkingService if unavailable
+- Singleton pattern via `get_docling_chunking_service()`
+
+#### 2. EvidencePanel (`frontend/src/components/EvidencePanel.tsx`)
+
+New React component for displaying source provenance:
+- Shows page numbers, bounding boxes, section paths
+- Displays table references
+- Shows match scores when available
+- Snippet preview for each source
+- Clickable sources to navigate to findings
+
+#### 3. QueryPanel Updates (`frontend/src/components/QueryPanel.tsx`)
+
+Enhanced with provenance display:
+- Toggle between simple badges and detailed EvidencePanel
+- Page number display in compact view
+- Integration with EvidencePanel for detailed view
+
+#### 4. FindingCard Updates (`frontend/src/components/FindingCard.tsx`)
+
+Added provenance display:
+- `source_locations` display with page/heading/table info
+- `source_chunk_ids` display for related fragments
+- New `SourceLocationBadge` helper component
+
+#### 5. Sessions Route (`backend/app/api/routes/sessions.py`)
+
+Updated to use DoclingChunkingService:
+- Uses HybridChunker when `document_payload` is available
+- Falls back to legacy chunking for CSV files
+- Imported `get_docling_chunking_service`
+
+#### 6. Tests (`backend/tests/test_docling_chunking_service.py`)
+
+New test file with:
+- Service initialization tests
+- Singleton pattern tests
+- Fallback behavior tests
+- Bbox parsing tests
+- Chunk field validation tests
+- Integration tests for HybridChunker
+
 ### Design Decisions
 
-1. **Backward Compatibility**: Fallback chunking when `document_payload` is None
-2. **Flexible Bbox Parsing**: Supports multiple Docling formats
-3. **Optional Provenance Fields**: All location fields are Optional to handle partial data
-4. **Tuple Types**: Used for `row_range` and `char_offset` to represent ranges
-
-### Tests Added
-- `test_fallback_chunking_without_document_payload`
-- `test_docling_provenance_extraction_with_texts_array`
-- `test_docling_provenance_extraction_with_body`
-- `test_table_chunks_with_provenance`
-- `test_bbox_parsing_dict_format`
-- `test_bbox_parsing_list_format`
-- `test_bbox_parsing_x0_y0_format`
-- `test_source_type_mapping`
-- `test_empty_document_payload_returns_fallback`
-- `test_chunk_order_is_sequential`
-
-### Risks
-- Motor/PyMongo version incompatibility (known issue, needs resolution)
-- Docling payload structure may vary between versions
+1. **Optional HybridChunker**: Service works even if HybridChunker import fails
+2. **Token-aware sizing**: Default 512 tokens aligns with embedding model limits
+3. **Singleton service**: Reuse initialized tokenizer for performance
+4. **Progressive disclosure**: Simple view by default, detailed provenance on demand
 
 ---
 
 ## Upcoming Tasks
 
-### Sprint 1: Docling HybridChunker Integration (P1)
-- [ ] Integrate `HybridChunker` from docling-core
-- [ ] Create `DoclingChunkingService` as wrapper
-- [ ] Create `EvidencePanel.tsx` frontend component
-- [ ] Expand sources display in `QueryPanel.tsx`
-- [ ] Update UI copy to reflect Docling context
-
-### Sprint 2: Enhanced Document Intelligence (P2)
+### Sprint 2: Enhanced Document Intelligence (P1)
 - [ ] Generate suggested questions from document structure
-- [ ] Add functional table selector
+- [ ] Add functional table selector in UI
 - [ ] Update documentation
 
 ---
@@ -123,3 +156,4 @@ Updated `create_session` to pass `document_payload` to chunking service.
 - Multi-document session support
 - Document comparison features
 - Export provenance to standard formats
+- Real-time collaboration features
