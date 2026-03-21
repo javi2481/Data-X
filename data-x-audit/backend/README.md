@@ -2,99 +2,126 @@
 
 Backend oficial de Data-X, una plataforma inteligente para el análisis y visualización de datos estructurados. Implementa una arquitectura Medallion (Bronze/Silver/Gold) para el procesamiento determinístico y enriquecimiento por IA.
 
-## Características principales (Corte 3)
+## Características principales
 
 - **Arquitectura Medallion**: Flujo de datos organizado en capas (Bronze: Raw, Silver: Profiling/Schema/Findings, Gold: Executive Summary/IA).
+- **Docling-first**: Pipeline de documentos con provenance completo (página, bbox, secciones).
 - **Finding-Centric**: El análisis se basa en "Hallazgos" (Findings) detectados automáticamente.
+- **HybridChunker**: Chunking semántico con límites de tokens para embeddings.
+- **PyMongo Async**: Base de datos MongoDB con API asíncrona nativa (migrado de Motor).
 - **ChartSpecs Agnósticos**: Generación de especificaciones de gráficos listas para ser renderizadas por cualquier librería.
-- **Ingesta Multiformato (Docling)**: Pipeline unificado para procesar CSV, XLSX y PDF con extracción inteligente de tablas.
-- **Schema Validation (Pandera)**: Validación automática de la estructura de datos en el pipeline Silver.
-- **Enriquecimiento con IA (Gold)**: Resúmenes ejecutivos y explicaciones inteligentes vía LiteLLM con retry y fallback determinístico.
-- **Observabilidad**: Instrumentación nativa con OpenTelemetry e índices optimizados en MongoDB.
-- **Tests Formales**: Suite de pruebas con pytest para garantizar la integridad del sistema.
 
 ## Requisitos previos
 
 - Python 3.11+
 - MongoDB (instancia local o Atlas)
+- [uv](https://docs.astral.sh/uv/) (recomendado) o pip
 
 ## Instalación
 
-1. Crear un entorno virtual:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # En Windows: .\venv\Scripts\activate
-   ```
+### Con uv (Recomendado - 10x más rápido)
 
-2. Instalar dependencias:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+# Instalar uv si no lo tenés
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-3. Configurar variables de entorno (.env):
-   ```env
-   MONGODB_URI=mongodb://...
-   MONGODB_DB=datax
-   LITELLM_API_KEY=sk-...
-   LITELLM_MODEL=gpt-4o-mini
-   CORS_ORIGINS=["http://localhost:3000"]
-   ```
+# Instalar dependencias
+uv sync
+
+# O usar el script de ayuda
+./scripts.sh install
+```
+
+### Con pip (Legacy)
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Configuración
+
+Crear archivo `.env`:
+```env
+MONGODB_URI=mongodb://...
+MONGODB_DB=datax
+LITELLM_API_KEY=sk-...
+LITELLM_MODEL=gpt-4o-mini
+CORS_ORIGINS=["http://localhost:3000"]
+```
 
 ## Ejecución
 
+### Con uv
 ```bash
-uvicorn app.main:app --reload --port 8000
+./scripts.sh server
+# o
+uv run uvicorn app.main:app --reload --port 8001
 ```
 
-## Pruebas (Tests)
+### Con pip
+```bash
+uvicorn app.main:app --reload --port 8001
+```
+
+## Scripts de Desarrollo (uv)
 
 ```bash
-$env:PYTHONPATH = "." # En PowerShell
+./scripts.sh install      # Instalar dependencias
+./scripts.sh install-dev  # Instalar deps de desarrollo
+./scripts.sh test         # Ejecutar pytest
+./scripts.sh lint         # Ejecutar ruff
+./scripts.sh format       # Formatear código
+./scripts.sh server       # Iniciar servidor
+./scripts.sh upgrade      # Actualizar dependencias
+./scripts.sh clean        # Limpiar caches
+```
+
+## Pruebas
+
+```bash
+# Con uv
+./scripts.sh test
+
+# Con pip
 python -m pytest tests/ -v
 ```
 
-El servidor estará disponible en `http://localhost:8000`.
-La documentación Swagger UI en `http://localhost:8000/docs`.
+## Documentación API
+
+- Swagger UI: `http://localhost:8001/docs`
+- ReDoc: `http://localhost:8001/redoc`
 
 ## Endpoints Principales
 
-### 1. Health Check
-`GET /api/health`
-```bash
-curl http://localhost:8000/api/health
-```
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/sessions` | Crear sesión (upload archivo) |
+| GET | `/api/sessions/{id}/report` | Obtener reporte completo |
+| POST | `/api/analyze` | Consulta interactiva |
+| GET | `/api/analyze/{id}/suggested-questions` | Preguntas sugeridas |
 
-### 2. Crear Sesión (Bronze -> Silver -> Gold)
-`POST /api/sessions` - Sube un CSV, XLSX o PDF, ejecuta el perfilado, valida esquema y genera hallazgos e interpretación.
-```bash
-curl -X POST http://localhost:8000/api/sessions -F "file=@ruta/archivo.xlsx"
-```
+## Arquitectura de Servicios
 
-### 3. Obtener Reporte Completo
-`GET /api/sessions/{id}/report` - Devuelve el AnalysisReport con findings y charts.
-```bash
-curl http://localhost:8000/api/sessions/TU_SESSION_ID/report
-```
+- **IngestService**: Pipeline Docling para CSV, XLSX y PDF
+- **DoclingChunkingService**: HybridChunker con provenance
+- **FindingBuilder**: Detección de hallazgos (nulos, duplicados, outliers)
+- **SuggestedQuestionsService**: Generación de preguntas contextuales
+- **EmbeddingService**: Índice híbrido FAISS para búsqueda semántica
+- **PerformanceOptimizer**: Batch processing y caching para documentos grandes
+- **LLMService**: Enriquecimiento con IA (LiteLLM)
 
-### 4. Análisis (Compatibilidad)
-`POST /api/analyze` - Consulta interactiva sobre la sesión.
-```bash
-curl -X POST http://localhost:8000/api/analyze \
-     -H "Content-Type: application/json" \
-     -d '{"session_id": "TU_ID", "query": "Analiza esto"}'
-```
+## Migraciones Importantes
 
-## Servicios del Backend (Corte 3)
+### Sprint 3: Motor → PyMongo Async
+Motor está deprecado (EOL Mayo 2026). Migramos a `AsyncMongoClient` de PyMongo nativo.
 
-- **IngestService**: Pipeline Docling para CSV, XLSX y PDF con fallback determinístico.
-- **FindingBuilder**: Corazón del análisis. Detecta nulos, duplicados, correlaciones, outliers, distribuciones y problemas de esquema.
-- **SchemaValidator (Pandera)**: Infiere y valida el esquema del dataset automáticamente.
-- **LLMService (Gold)**: Capa de IA con LiteLLM. Genera resúmenes ejecutivos y explicaciones enriquecidas con mecanismo de retry.
-- **ChartSpecGenerator**: Transforma hallazgos y datos en especificaciones visuales (scatter plots, histogramas, heatmaps).
-- **NormalizationService**: Limpia headers (unicodedata) y coerciona tipos.
-- **ProfilerService**: Perfilado estadístico profundo por columna (NaN-safe).
-- **EDAExtendedService**: Análisis estadístico avanzado (correlaciones de Pearson, outliers IQR/Z-score, distribuciones).
+### Sprint 4: pip → uv
+uv ofrece instalación 10x más rápida y lockfiles cross-platform.
 
 ## Roadmap
-- **Corte 4**: Mejoras en UI y exportación de reportes.
-- **Corte 5**: Integración de bases de datos relacionales.
+- Multi-document sessions
+- Document comparison
+- Real-time collaboration

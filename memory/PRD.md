@@ -287,20 +287,88 @@ New service for handling large documents:
 
 ---
 
-## Upcoming Tasks
+## Sprint 4: uv Migration & Final Polish ✅ COMPLETED
 
-### Sprint 4: uv Migration & Final Polish (P1)
-- [ ] Implement uv migration (replace pip)
-- [ ] Update CI/CD for uv
-- [ ] Add pyproject.toml (optional)
-- [ ] Final documentation updates
+### What was implemented
+
+#### 1. uv Package Manager Migration
+
+**Installed uv** (v0.10.12) - 10x faster than pip
+
+**Created `pyproject.toml`:**
+- Project metadata (name, version, description)
+- All dependencies from requirements.txt
+- Dev dependency group (pytest, ruff)
+- Hatch build configuration
+- Ruff linter configuration
+- Pytest configuration
+
+**Generated `uv.lock`:**
+- Cross-platform lockfile
+- 195 packages resolved
+- Reproducible builds
+
+#### 2. Development Scripts (`backend/scripts.sh`)
+
+Bash script with commands:
+- `install` / `install-dev` - Install dependencies
+- `lock` - Generate lockfile
+- `run <cmd>` - Run in venv
+- `test` - Run pytest
+- `lint` / `format` - Ruff linter/formatter
+- `server` - Start uvicorn
+- `upgrade` - Update dependencies
+- `clean` - Clear caches
+
+#### 3. Documentation Updates
+
+**Updated `backend/README.md`:**
+- uv installation instructions
+- Script usage documentation
+- Migration notes
+- Updated service architecture
+
+**Updated `docs/UV_MIGRATION_ANALYSIS.md`:**
+- Marked as COMPLETED
+- Added implementation details
+
+### Files Created/Modified
+
+| File | Type | Description |
+|------|------|-------------|
+| `backend/pyproject.toml` | New | Project configuration |
+| `backend/uv.lock` | New | Dependency lockfile |
+| `backend/scripts.sh` | New | Dev scripts |
+| `backend/README.md` | Modified | Updated docs |
+| `docs/UV_MIGRATION_ANALYSIS.md` | Modified | Completion status |
+
+### Compatibility
+
+- ✅ `requirements.txt` kept for pip users
+- ✅ `pyproject.toml` as primary source
+- ✅ Both pip and uv work
 
 ---
 
-## Backlog (Future)
-- Multi-document session support
-- Document comparison features
-- Export provenance to standard formats
-- Real-time collaboration features
-- Internationalization (i18n)
-- PDF rendering server-side (page image generation)
+## Upcoming Tasks
+
+### Backlog (Future Enhancements)
+- [ ] Multi-document session support
+- [ ] Document comparison features
+- [ ] Export provenance to standard formats
+- [ ] Real-time collaboration features
+- [ ] Internationalization (i18n)
+- [ ] PDF rendering server-side (page image generation)
+- [ ] CI/CD pipeline with uv
+
+---
+
+## Project Status: ✅ ALL SPRINTS COMPLETED
+
+| Sprint | Name | Status |
+|--------|------|--------|
+| Sprint 0 | Foundation of Provenance | ✅ Completed |
+| Sprint 1 | HybridChunker Integration | ✅ Completed |
+| Sprint 2 | Enhanced Document Intelligence | ✅ Completed |
+| Sprint 3 | Production Readiness | ✅ Completed |
+| Sprint 4 | uv Migration & Final Polish | ✅ Completed |
