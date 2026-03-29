@@ -32,18 +32,31 @@ class PipelineOrchestrator:
     """
 
     def __init__(self):
+        logger.info("Initializing IngestService")
         self.ingest_service = IngestService()
+        logger.info("Initializing NormalizationService")
         self.normalization_service = NormalizationService()
+        logger.info("Initializing ProfilerService")
         self.profiler_service = ProfilerService()
+        logger.info("Initializing DoclingQualityGate")
         self.quality_gate = DoclingQualityGate()
+        logger.info("Initializing FindingBuilder")
         self.finding_builder = FindingBuilder()
+        logger.info("Initializing ChartSpecGenerator")
         self.chart_spec_generator = ChartSpecGenerator()
+        logger.info("Initializing EDAExtendedService")
         self.eda_service = EDAExtendedService()
+        logger.info("Initializing LLMService")
         self.llm_service = LLMService()
+        logger.info("Initializing SchemaValidator")
         self.schema_validator = SchemaValidator()
+        logger.info("Initializing StatisticalTestsService")
         self.stat_tests_service = StatisticalTestsService()
+        logger.info("Initializing DoclingChunkingService")
         self.docling_chunking_service = get_docling_chunking_service()
+        logger.info("Initializing EmbeddingService")
         self.embedding_service = EmbeddingService()
+        logger.info("PipelineOrchestrator initialized successfully")
 
     async def run_full_pipeline(
         self,
