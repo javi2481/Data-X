@@ -1,17 +1,33 @@
+import threading
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import faiss
 import numpy as np
 from app.services.retrieval.base import BaseRetrievalService
 
 class EmbeddingService(BaseRetrievalService):
+    # ── AI-001 fix: caché a nivel de clase ──────────────────────────────────
+    # SentenceTransformer y CrossEncoder son thread-safe para inferencia.
+    # Compartirlos entre instancias evita cargar ~500MB por instancia y
+    # elimina los ~15s de inicialización en cada request a /api/analyze.
+    _model_cache: dict = {}
+    _model_lock = threading.Lock()
+    _reranker_cache: dict = {}
+    _reranker_lock = threading.Lock()
+    # ────────────────────────────────────────────────────────────────────────
+
     def __init__(self):
         self._model_name = "paraphrase-multilingual-MiniLM-L12-v2"
-        self.model = SentenceTransformer(self._model_name)
         self.reranker_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-        self.reranker = None  # Carga lazy (solo se instancia si se usa) para ahorrar memoria RAM en el startup
+
+        # Cargar o reutilizar el modelo desde el caché de clase
+        with EmbeddingService._model_lock:
+            if self._model_name not in EmbeddingService._model_cache:
+                EmbeddingService._model_cache[self._model_name] = SentenceTransformer(self._model_name)
+        self.model = EmbeddingService._model_cache[self._model_name]
+
         self.index = None
         self.findings_map = {}  # id -> Finding dict
-        self.source_map = {}  # id -> source dict (hybrid)
+        self.source_map = {}    # id -> source dict (hybrid)
         self.source_ids: list[str] = []
     
     @property
@@ -19,10 +35,11 @@ class EmbeddingService(BaseRetrievalService):
         return self._model_name
 
     def _get_reranker(self):
-        """Carga el modelo de reranking bajo demanda."""
-        if self.reranker is None:
-            self.reranker = CrossEncoder(self.reranker_name)
-        return self.reranker
+        """Carga el CrossEncoder bajo demanda y lo cachea a nivel de clase."""
+        with EmbeddingService._reranker_lock:
+            if self.reranker_name not in EmbeddingService._reranker_cache:
+                EmbeddingService._reranker_cache[self.reranker_name] = CrossEncoder(self.reranker_name)
+        return EmbeddingService._reranker_cache[self.reranker_name]
 
     def rerank(self, query: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
         """Reordena los candidatos usando un modelo Cross-Encoder más profundo."""

@@ -1,35 +1,63 @@
 import litellm
 from litellm import Router, completion_cost
 from app.core.config import settings
+from app.utils import to_dict
 import structlog
 import json
-import os
 from typing import Optional, Any
 
 logger = structlog.get_logger(__name__)
 
-# Configurar cache distribuido en Redis
-redis_host = os.environ.get("REDIS_HOST", "localhost")
-redis_port = os.environ.get("REDIS_PORT", "6379")
-litellm.cache = litellm.Cache(type="redis", host=redis_host, port=redis_port)
-
 class LLMService:
     def __init__(self):
         self.api_key = settings.litellm_api_key
+
+        # ── BUG-004 fix: inicializar cache Redis dentro del constructor ────────
+        # Antes: litellm.cache se inicializaba a nivel de módulo con os.environ,
+        # ignorando el sistema de configuración centralizado (Settings/Pydantic).
+        # Esto causaba inconsistencias en Docker/K8s donde Redis corre en un host
+        # diferente al configurado en settings.
+        try:
+            litellm.cache = litellm.Cache(
+                type="redis",
+                host=settings.redis_host,
+                port=settings.redis_port,
+            )
+        except Exception as e:
+            logger.warning("litellm_cache_unavailable", error=str(e))
+            litellm.cache = None  # Degradar graciosamente si Redis no está disponible
+        # ─────────────────────────────────────────────────────────────────────
+
         self.router = None
         if self.api_key:
+            # Modelo primario
             model_list = [
                 {
-                    "model_name": "default",
+                    "model_name": "primary",
                     "litellm_params": {
                         "model": settings.litellm_model,
                         "api_key": self.api_key,
                     }
                 }
             ]
-            # Podríamos agregar fallbacks adicionales aquí si estuvieran en config
+            # ACT-007: agregar fallback si está configurado en settings
+            # Elimina el punto único de falla: si OpenRouter cae, el Router
+            # hace failover automático al modelo de fallback configurado.
+            fallbacks = []
+            if settings.litellm_fallback_model:
+                model_list.append({
+                    "model_name": "fallback",
+                    "litellm_params": {
+                        "model": settings.litellm_fallback_model,
+                        "api_key": self.api_key,
+                    }
+                })
+                fallbacks = [{"primary": ["fallback"]}]
+                logger.info("litellm_fallback_configured", model=settings.litellm_fallback_model)
+
             self.router = Router(
                 model_list=model_list,
+                fallbacks=fallbacks,
                 num_retries=2,
                 timeout=30,
                 retry_after=2,
@@ -48,11 +76,12 @@ class LLMService:
             rows = dataset_context.get("row_count", 0)
             cols = dataset_context.get("column_count", 0)
             narrative = dataset_context.get("narrative_context", "")
-            
-            # En Pydantic v2 o dict, tratamos de acceder a los campos
-            f_what = getattr(finding, "what", finding.get("what", "")) if not isinstance(finding, dict) else finding.get("what", "")
-            f_so_what = getattr(finding, "so_what", finding.get("so_what", "")) if not isinstance(finding, dict) else finding.get("so_what", "")
-            f_now_what = getattr(finding, "now_what", finding.get("now_what", "")) if not isinstance(finding, dict) else finding.get("now_what", "")
+
+            # ACT-013: normalizar finding a dict una sola vez (elimina 15+ getattr ternarios)
+            f = to_dict(finding)
+            f_what    = f.get("what", "")
+            f_so_what = f.get("so_what", "")
+            f_now_what = f.get("now_what", "")
 
             prompt = f"""Sos un analista de datos explicando resultados a una persona de negocio.
 Te doy un hallazgo de un análisis de datos. Tu trabajo es explicar

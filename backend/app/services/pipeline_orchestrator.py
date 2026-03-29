@@ -3,9 +3,10 @@ PipelineOrchestrator: Bronze → Silver → Gold pipeline for the ARQ worker.
 
 Called exclusively from app/worker.py via run_pipeline_task().
 """
+import asyncio
 import os
 import structlog
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from app.repositories.mongo import session_repo
@@ -108,7 +109,7 @@ class PipelineOrchestrator:
                 "document_payload": conversion_metadata.get("document_payload"),
                 "source_metadata": source_metadata,
                 "schema_info": schema_info,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
             # save_bronze takes only the doc dict (session_id is inside it)
             await session_repo.save_bronze(bronze_doc)
@@ -177,6 +178,27 @@ class PipelineOrchestrator:
                 chunks=chunks_dicts,
             )
 
+            # ─── PERSISTIR ÍNDICE FAISS ───────────────────────────────
+            # El índice se construye en el worker (proceso separado). Sin
+            # persistirlo, el endpoint /api/analyze instancia un nuevo
+            # EmbeddingService vacío y el RAG retorna siempre lista vacía.
+            if self.embedding_service.index is not None:
+                index_bytes = self.embedding_service.serialize_index()
+                await session_repo.save_hybrid_embeddings_cache({
+                    "session_id": session_id,
+                    "index_bytes": index_bytes,
+                    "source_map": self.embedding_service.source_map,
+                    "source_ids": self.embedding_service.source_ids,
+                    "model_name": self.embedding_service.model_name,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                logger.info(
+                    "faiss_index_persisted",
+                    session_id=session_id,
+                    index_size=len(index_bytes),
+                    sources=len(self.embedding_service.source_ids),
+                )
+
             silver_doc: Dict[str, Any] = {
                 "session_id": session_id,
                 "dataset_overview": dataset_overview,
@@ -189,7 +211,7 @@ class PipelineOrchestrator:
                 "data_preview": df.head(50).to_dict(orient="records"),
                 "statistical_tests": stat_tests,
                 "eda_results": eda_results,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
             # save_silver takes only the doc dict
             await session_repo.save_silver(silver_doc)
@@ -217,19 +239,43 @@ class PipelineOrchestrator:
             total_cost = summary_result.get("cost_usd", 0.0)
             llm_calls = 1
 
-            for finding in findings_dicts[:10]:
+            # ACT-008: enrich findings con timeout por llamada y concurrencia controlada
+            # Antes: loop secuencial sin timeout → pipeline podía bloquearse >5min
+            # Después: asyncio.gather() con Semaphore(3) → tiempo total ~1min para 10 findings
+            async def _safe_enrich(finding: Dict[str, Any]) -> tuple[str, Any]:
+                fid = finding.get("finding_id", "")
                 try:
-                    enriched = await self.llm_service.generate_enriched_explanation(
-                        finding=finding,
-                        dataset_context=dataset_context,
+                    result = await asyncio.wait_for(
+                        self.llm_service.generate_enriched_explanation(
+                            finding=finding,
+                            dataset_context=dataset_context,
+                        ),
+                        timeout=25,
                     )
-                    fid = finding.get("finding_id", "")
-                    if fid:
-                        enriched_explanations[fid] = enriched.get("explanation")
-                    total_cost += enriched.get("cost_usd", 0.0)
-                    llm_calls += 1
+                    return fid, result
+                except asyncio.TimeoutError:
+                    logger.warning("finding_enrich_timeout", finding_id=fid)
+                    return fid, {"explanation": None, "cost_usd": 0.0}
                 except Exception as enrich_err:
-                    logger.warning("finding_enrich_failed", error=str(enrich_err))
+                    logger.warning("finding_enrich_failed", finding_id=fid, error=str(enrich_err))
+                    return fid, {"explanation": None, "cost_usd": 0.0}
+
+            sem = asyncio.Semaphore(3)
+
+            async def _enrich_with_sem(finding: Dict[str, Any]) -> tuple[str, Any]:
+                async with sem:
+                    return await _safe_enrich(finding)
+
+            enrich_results = await asyncio.gather(
+                *[_enrich_with_sem(f) for f in findings_dicts[:10]]
+            )
+
+            enriched_explanations: Dict[str, Any] = {}
+            for fid, enriched in enrich_results:
+                if fid:
+                    enriched_explanations[fid] = enriched.get("explanation")
+                total_cost += enriched.get("cost_usd", 0.0)
+                llm_calls += 1
 
             # save_gold takes only the doc dict
             await session_repo.save_gold({
@@ -239,7 +285,7 @@ class PipelineOrchestrator:
                 "llm_cost_usd": total_cost,
                 "llm_model_used": summary_result.get("model", ""),
                 "llm_calls_count": llm_calls,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             })
 
             # ─── FINALIZAR ────────────────────────────────────────────

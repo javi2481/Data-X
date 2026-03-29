@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Any
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -20,7 +20,7 @@ class AuthService:
 
     def create_access_token(self, user_id: str, email: str) -> str:
         expires_delta = timedelta(hours=settings.jwt_expiration_hours)
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
         to_encode = {
             "sub": user_id,
             "email": email,

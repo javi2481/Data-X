@@ -1,6 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import lru_cache
 import uuid
 import io
 import csv
@@ -26,7 +27,6 @@ from app.services.ingestion.distributed_strategy import DistributedIngestionServ
 from app.services.embedding_service import EmbeddingService
 from app.repositories.mongo import session_repo
 from app.api.dependencies import get_current_user
-from fastapi import Depends
 from app.core.rate_limit import limiter
 from app.services.job_queue import JobQueueService
 import tempfile
@@ -43,34 +43,71 @@ class PaginatedSessionList(BaseModel):
     limit: int
     offset: int
 
-ingest_service = IngestService()
-normalization_service = NormalizationService()
-profiler_service = ProfilerService()
-quality_gate = DoclingQualityGate()
-finding_builder = FindingBuilder()
-chart_spec_generator = ChartSpecGenerator()
-eda_service = EDAExtendedService()
-llm_service = LLMService()
-schema_validator = SchemaValidator()
-stat_tests_service = StatisticalTestsService()
-chunking_service = DocumentChunkingService()  # Legacy fallback
-docling_chunking_service = get_docling_chunking_service()  # Sprint 1: HybridChunker
-distributed_ingestion_service = DistributedIngestionService()
-job_queue_service = JobQueueService()
+# ── ACT-010: FastAPI Dependency Injection con @lru_cache ─────────────────────
+# Antes: 12 singletons globales a nivel de módulo, imposibles de reemplazar en
+# tests y que cargan todos los modelos ML al iniciar FastAPI.
+# Después: factories con lru_cache(maxsize=1) — singleton reemplazable via
+# app.dependency_overrides en tests, y lazy-loaded en el primer request.
+
+@lru_cache(maxsize=1)
+def get_ingest_service() -> IngestService:
+    return IngestService()
+
+@lru_cache(maxsize=1)
+def get_normalization_service() -> NormalizationService:
+    return NormalizationService()
+
+@lru_cache(maxsize=1)
+def get_profiler_service() -> ProfilerService:
+    return ProfilerService()
+
+@lru_cache(maxsize=1)
+def get_quality_gate() -> DoclingQualityGate:
+    return DoclingQualityGate()
+
+@lru_cache(maxsize=1)
+def get_finding_builder() -> FindingBuilder:
+    return FindingBuilder()
+
+@lru_cache(maxsize=1)
+def get_chart_spec_generator() -> ChartSpecGenerator:
+    return ChartSpecGenerator()
+
+@lru_cache(maxsize=1)
+def get_eda_service() -> EDAExtendedService:
+    return EDAExtendedService()
+
+@lru_cache(maxsize=1)
+def get_llm_service() -> LLMService:
+    return LLMService()
+
+@lru_cache(maxsize=1)
+def get_schema_validator() -> SchemaValidator:
+    return SchemaValidator()
+
+@lru_cache(maxsize=1)
+def get_stat_tests_service() -> StatisticalTestsService:
+    return StatisticalTestsService()
+
+@lru_cache(maxsize=1)
+def get_chunking_service() -> DocumentChunkingService:
+    return DocumentChunkingService()
+
+@lru_cache(maxsize=1)
+def get_job_queue_service() -> JobQueueService:
+    return JobQueueService()
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_ingestion_strategy(current_user: dict) -> Any:
-    """
-    Patrón Strategy: Decide entre pipeline local (Docling) o distribuido (IBM Data Prep Kit).
-    """
     tier = current_user.get("tier", "lite")
     if tier == "enterprise":
         import structlog
         structlog.get_logger(__name__).info("strategy_injection", strategy="distributed_ingestion", user=current_user["sub"])
-        return distributed_ingestion_service
-    return ingest_service
+        return DistributedIngestionService()
+    return get_ingest_service()
 
-@router.post("", 
-    response_model=SessionResponse, 
+@router.post("",
+    response_model=SessionResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Crear nueva sesión de análisis",
     description="Carga un archivo CSV, ejecuta el pipeline Medallion (Bronze/Silver) y genera los hallazgos iniciales."
@@ -80,7 +117,8 @@ async def create_session(
     request: Request,
     file: UploadFile = File(...),
     table_index: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    job_queue: JobQueueService = Depends(get_job_queue_service),
 ):
     """
     Crea una sesión a partir de un archivo subido.
@@ -157,7 +195,7 @@ async def create_session(
             tmp_path = tmp.name
         
         session_id = f"sess_{uuid.uuid4()}"
-        ingested_at = datetime.utcnow()
+        ingested_at = datetime.now(timezone.utc)
 
         # Crear la sesión inicial en estado "queued"
         session_data = {
@@ -175,7 +213,7 @@ async def create_session(
         await session_repo.create_session(session_data.copy())
         
         # Encolar el trabajo en Redis vía ARQ
-        await job_queue_service.enqueue_pipeline_job(
+        await job_queue.enqueue_pipeline_job(
             session_id=session_id,
             file_path=tmp_path,
             filename=file.filename,

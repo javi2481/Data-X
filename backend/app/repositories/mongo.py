@@ -154,7 +154,8 @@ class SessionRepository:
         await self.embeddings_cache.delete_many({"session_id": session_id})
         await self.hybrid_embeddings_cache.delete_many({"session_id": session_id})
         await self.document_chunks.delete_many({"session_id": session_id})
-        await self.db.usage_events.delete_many({"session_id": session_id})
+        if db.db is not None:
+            await db.db["usage_events"].delete_many({"session_id": session_id})
         return True
 
 session_repo = SessionRepository()

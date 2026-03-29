@@ -22,15 +22,21 @@ async def lifespan(app: FastAPI):
     setup_telemetry(app)
     await db.connect_to_db()
     
-    # Crear índices
+    # Crear índices — ACT-009: índices compuestos para queries frecuentes
     if db.db is not None:
         await db.db.users.create_index("email", unique=True)
         await db.db.users.create_index("user_id", unique=True)
         await db.db.sessions.create_index("session_id", unique=True)
-        await db.db.sessions.create_index("user_id")
-        await db.db.bronze.create_index("session_id")
-        await db.db.silver.create_index("session_id")
-        await db.db.sessions.create_index([("created_at", -1)])
+        # Índice compuesto (user_id, created_at DESC): cubre la query más frecuente
+        # find({"user_id": X}).sort("created_at", -1) en O(log n) en lugar de O(n)
+        await db.db.sessions.create_index(
+            [("user_id", 1), ("created_at", -1)],
+            name="idx_sessions_user_date"
+        )
+        # Índices en colecciones Medallion para lookups por session_id
+        await db.db.bronze.create_index("session_id", name="idx_bronze_session")
+        await db.db.silver.create_index("session_id", name="idx_silver_session")
+        await db.db.gold.create_index("session_id", name="idx_gold_session")
         print("🚀 Índices de MongoDB creados/verificados")
         
     yield
@@ -107,14 +113,10 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={"error_code": "INTERNAL_ERROR", "message": "Ha ocurrido un error inesperado en el servidor."},
     )
 
-# Registrar routers (prefijo /api)
+# Registrar routers — ACT-012: eliminados registros legacy sin prefijo /api
+# que generaban rutas duplicadas en el OpenAPI spec y potenciales colisiones.
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(analyze.router, prefix="/api/analyze", tags=["analyze"])
 app.include_router(reports.router, prefix="/api/sessions", tags=["reports"])
-
-# Mantener compatibilidad (sin /api) - Opcional, pero recomendado
-app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
-app.include_router(analyze.router, prefix="/analyze", tags=["analyze"])

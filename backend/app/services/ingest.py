@@ -4,6 +4,7 @@ import os
 import tempfile
 from typing import Any
 import structlog
+from app.core.config import settings
 
 # Intentar importar Docling
 try:
@@ -48,8 +49,9 @@ class IngestService:
         # Intentar con Docling primero
         if DOCLING_AVAILABLE and (is_pdf or is_excel or is_docx):
             
-            # Integración OpenCV Quality Gate (Fase 7)
-            if is_pdf:
+            # REF-005: OpenCV Quality Gate opcional para PDFs
+            # Permite deshabilitarlo en producción para reducir latencia de 2-5s
+            if is_pdf and settings.enable_pdf_quality_gate:
                 from app.services.opencv_pipeline import OpenCVPipeline
                 cv_pipeline = OpenCVPipeline()
                 images = cv_pipeline.pdf_to_cv2_images(file_bytes)
@@ -62,6 +64,8 @@ class IngestService:
                             f"El documento fue rechazado por baja calidad visual (borroso o fuera de foco). "
                             f"Nivel de nitidez detectado: {round(qg_result['variance'], 2)}"
                         )
+            elif is_pdf and not settings.enable_pdf_quality_gate:
+                logger.debug("pdf_quality_gate_disabled", filename=filename)
                         
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
