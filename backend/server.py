@@ -89,6 +89,116 @@ AUDIT_REPORT = {
                 ],
                 "lines_changed": 41,
                 "description": "Worker instancia PipelineOrchestrator una sola vez en on_startup(ctx). EmbeddingService ahora usa caché a nivel de clase (threading.Lock) para SentenceTransformer y CrossEncoder. Reduce latencia por tarea en 30-60s y RAM en ~60%."
+            },
+            {
+                "bug_id": "ACT-005",
+                "title": "Redis cache de LiteLLM centralizado en settings",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/bug-004-litellm-cache-settings",
+                "files_changed": ["backend/app/services/llm_service.py"],
+                "lines_changed": 15,
+                "description": "Eliminado import os y las 3 líneas de módulo con os.environ. litellm.cache ahora se inicializa en __init__() usando settings.redis_host/port con degradación graceful si Redis no está disponible."
+            },
+            {
+                "bug_id": "ACT-006",
+                "title": "Cron job de limpieza de archivos temporales en worker ARQ",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-006-temp-cleanup-cron",
+                "files_changed": ["backend/app/worker.py"],
+                "lines_changed": 22,
+                "description": "Función cleanup_stale_temp_files() elimina archivos tmp > 1 hora de antigüedad. Registrada como cron_job horario en WorkerSettings. Previene acumulación en disco tras crashes con SIGKILL."
+            },
+            {
+                "bug_id": "ACT-007",
+                "title": "Fallback models en LiteLLM Router",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-007-litellm-fallback",
+                "files_changed": [
+                    "backend/app/core/config.py",
+                    "backend/app/services/llm_service.py"
+                ],
+                "lines_changed": 28,
+                "description": "Agregado campo litellm_fallback_model en Settings. Router configurado con fallbacks=[{'primary': ['fallback']}] cuando el campo está presente. Elimina punto único de falla en el pipeline de IA."
+            },
+            {
+                "bug_id": "ACT-008",
+                "title": "Timeout + paralelismo en enrichment de findings",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-008-async-enrichment",
+                "files_changed": ["backend/app/services/pipeline_orchestrator.py"],
+                "lines_changed": 38,
+                "description": "Loop secuencial reemplazado por asyncio.gather() con Semaphore(3) y asyncio.wait_for(timeout=25s) por llamada. Reduce tiempo Gold de ~5min a ~1min para 10 findings."
+            },
+            {
+                "bug_id": "ACT-009",
+                "title": "Índices compuestos MongoDB",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-009-mongo-indexes",
+                "files_changed": ["backend/app/main.py"],
+                "lines_changed": 10,
+                "description": "Agregado índice compuesto (user_id, created_at DESC) en sessions para cubrir la query más frecuente en O(log n). Índices nombrados en bronze, silver, gold para session_id lookups."
+            },
+            {
+                "bug_id": "ACT-010",
+                "title": "FastAPI Dependency Injection para servicios",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-010-fastapi-di",
+                "files_changed": ["backend/app/api/routes/sessions.py"],
+                "lines_changed": 65,
+                "description": "12 singletons globales reemplazados por factories con @lru_cache(maxsize=1). Servicios inyectados vía Depends(). Reemplazables en tests con app.dependency_overrides. FastAPI startup ya no carga modelos ML de forma eager."
+            },
+            {
+                "bug_id": "ACT-011",
+                "title": "datetime.utcnow() → datetime.now(timezone.utc)",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-011-datetime-timezone",
+                "files_changed": [
+                    "backend/app/services/pipeline_orchestrator.py",
+                    "backend/app/services/auth_service.py",
+                    "backend/app/api/routes/sessions.py"
+                ],
+                "lines_changed": 8,
+                "description": "Reemplazados todos los datetime.utcnow() (deprecado Python 3.12+) por datetime.now(timezone.utc). Importado timezone en los 3 archivos afectados."
+            },
+            {
+                "bug_id": "ACT-012",
+                "title": "Routers duplicados eliminados de main.py",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-012-remove-legacy-routes",
+                "files_changed": ["backend/app/main.py"],
+                "lines_changed": 6,
+                "description": "Eliminados 3 registros legacy sin prefijo /api (health, sessions, analyze). OpenAPI spec ahora sin duplicados. Rutas /health, /sessions, /analyze ya no responden (solo /api/*)."
+            },
+            {
+                "bug_id": "ACT-013",
+                "title": "Helper to_dict() para normalizar objetos Finding",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-013-to-dict-helper",
+                "files_changed": [
+                    "backend/app/utils.py",
+                    "backend/app/services/llm_service.py"
+                ],
+                "lines_changed": 20,
+                "description": "Creado backend/app/utils.py con to_dict() que normaliza Pydantic v1/v2, dataclass y dict a dict puro. Reemplazados 3 getattr ternarios en generate_enriched_explanation(). Patrón aplicable a todo el codebase."
+            },
+            {
+                "bug_id": "ACT-014",
+                "title": "Validación de configuración crítica en startup",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-014-config-validation",
+                "files_changed": ["backend/app/core/config.py"],
+                "lines_changed": 14,
+                "description": "Agregado @model_validator(mode='after') en Settings que emite warnings si JWT_SECRET_KEY o LITELLM_API_KEY no están configuradas. Detecta configuraciones incompletas al importar el módulo, no en runtime."
             }
         ]
     },
@@ -209,6 +319,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-005",
+                    "status": "fixed",
+                    "fix_branch": "fix/bug-005-csv-mime-validation",
                     "title": "Validación MIME de CSV demasiado restrictiva bloquea uploads legítimos",
                     "severity": "high",
                     "category": "bug",
@@ -227,6 +339,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-006",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-006-temp-cleanup-cron",
                     "title": "JobQueueService no reutiliza el pool Redis entre requests",
                     "severity": "high",
                     "category": "performance",
@@ -245,6 +359,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-007",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-006-temp-cleanup-cron",
                     "title": "Archivos temporales huérfanos si el worker muere antes del finally",
                     "severity": "high",
                     "category": "reliability",
@@ -283,6 +399,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-009",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-008-async-enrichment",
                     "title": "Sin timeout en llamadas LLM individuales para enrichment de findings",
                     "severity": "high",
                     "category": "reliability",
@@ -319,6 +437,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-011",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-012-remove-legacy-routes",
                     "title": "Doble registro de routers en main.py genera rutas duplicadas en OpenAPI",
                     "severity": "medium",
                     "category": "bug",
@@ -337,6 +457,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-012",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-009-mongo-indexes",
                     "title": "Sin índice compuesto en sessions para queries de usuario + fecha",
                     "severity": "medium",
                     "category": "performance",
@@ -355,6 +477,8 @@ AUDIT_REPORT = {
                 },
                 {
                     "id": "BUG-013",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-011-datetime-timezone",
                     "title": "datetime.utcnow() deprecado en Python 3.12+",
                     "severity": "low",
                     "category": "deprecation",
