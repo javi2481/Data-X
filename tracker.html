@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📋 Tracker data-x - Pendientes</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #48bb78;
+        }
+        .stat-card.pending { border-left-color: #ed8936; }
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        .stat-label {
+            color: #718096;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .priority-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .critical { background: #fed7d7; color: #c53030; }
+        .high { background: #feebc8; color: #c05621; }
+        .medium { background: #bee3f8; color: #2c5282; }
+        .low { background: #c6f6d5; color: #276749; }
+        .task {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+        .task:hover {
+            background: #edf2f7;
+            transform: translateX(4px);
+        }
+        .task.completed {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+        .task input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .task-content {
+            flex: 1;
+        }
+        .task-title {
+            font-weight: 500;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+        .task-desc {
+            font-size: 13px;
+            color: #718096;
+        }
+        .task-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78, #38a169);
+            transition: width 0.3s ease;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 20px;
+        }
+        .btn:hover {
+            background: #5a67d8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 Tracker de Pendientes - data-x</h1>
+        <p class="subtitle">Commit d10cadf listo | Backend en producción</p>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressBar" style="width: 77%"></div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="completedCount">30</div>
+                <div class="stat-label">✅ Completados</div>
+            </div>
+            <div class="stat-card pending">
+                <div class="stat-number" id="pendingCount">9</div>
+                <div class="stat-label">⏳ Pendientes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">77%</div>
+                <div class="stat-label">📊 Progreso</div>
+            </div>
+        </div>
+
+        <!-- CRÍTICO -->
+        <div class="section">
+            <div class="section-title">
+                🔴 CRÍTICO - Hacer YA
+            </div>
+            
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">Push commit a GitHub</div>
+                    <div class="task-desc">git pull origin main && git push origin main</div>
+                </div>
+                <span class="priority-badge critical">CRÍTICO</span>
+                <div class="task-meta">👤 TU</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">FE-001: JWT en httpOnly cookies</div>
+                    <div class="task-desc">Mover token de localStorage a cookies (XSS vulnerability)</div>
+                </div>
+                <span class="priority-badge critical">HIGH</span>
+                <div class="task-meta">⏱️ 30 min</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">FE-002: Polling con límite</div>
+                    <div class="task-desc">Agregar max attempts + exponential backoff</div>
+                </div>
+                <span class="priority-badge critical">HIGH</span>
+                <div class="task-meta">⏱️ 20 min</div>
+            </div>
+        </div>
+
+        <!-- IMPORTANTE -->
+        <div class="section">
+            <div class="section-title">
+                🟡 IMPORTANTE - Esta Semana
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">NXT-002: CI/CD con GitHub Actions</div>
+                    <div class="task-desc">Crear workflow: tests + linting + deploy automático</div>
+                </div>
+                <span class="priority-badge high">HIGH</span>
+                <div class="task-meta">⏱️ 45 min</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">FE-003: Validar status antes de getReport()</div>
+                    <div class="task-desc">Evitar llamada prematura al backend</div>
+                </div>
+                <span class="priority-badge medium">MEDIUM</span>
+                <div class="task-meta">⏱️ 15 min</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">FE-004: Implementar AbortController</div>
+                    <div class="task-desc">Cancelar requests en cleanup</div>
+                </div>
+                <span class="priority-badge medium">MEDIUM</span>
+                <div class="task-meta">⏱️ 20 min</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">FE-005: Historial de queries</div>
+                    <div class="task-desc">Guardar últimas 5 queries en QueryPanel</div>
+                </div>
+                <span class="priority-badge medium">MEDIUM</span>
+                <div class="task-meta">⏱️ 30 min</div>
+            </div>
+        </div>
+
+        <!-- DESEABLE -->
+        <div class="section">
+            <div class="section-title">
+                🟢 DESEABLE - Siguiente Sprint
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">NXT-003: OpenSearch para tier Enterprise</div>
+                    <div class="task-desc">Implementar OpenSearchRetrievalService con k-NN</div>
+                </div>
+                <span class="priority-badge medium">MEDIUM</span>
+                <div class="task-meta">⏱️ 2-3h</div>
+            </div>
+
+            <div class="task">
+                <input type="checkbox" onchange="updateProgress()">
+                <div class="task-content">
+                    <div class="task-title">NXT-004: Mejorar anti-alucinaciones</div>
+                    <div class="task-desc">Confidence scoring + source verification</div>
+                </div>
+                <span class="priority-badge low">LOW</span>
+                <div class="task-meta">⏱️ 1-2h</div>
+            </div>
+        </div>
+
+        <button class="btn" onclick="downloadProgress()">💾 Descargar Progreso</button>
+    </div>
+
+    <script>
+        function updateProgress() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const total = checkboxes.length;
+            let checked = 0;
+            
+            checkboxes.forEach(cb => {
+                const task = cb.closest('.task');
+                if (cb.checked) {
+                    task.classList.add('completed');
+                    checked++;
+                } else {
+                    task.classList.remove('completed');
+                }
+            });
+
+            const completed = 30 + checked;
+            const pending = 9 - checked;
+            const percentage = Math.round((completed / (completed + pending)) * 100);
+
+            document.getElementById('completedCount').textContent = completed;
+            document.getElementById('pendingCount').textContent = pending;
+            document.getElementById('progressBar').style.width = percentage + '%';
+            document.querySelector('.stats .stat-card:last-child .stat-number').textContent = percentage + '%';
+
+            // Guardar en localStorage
+            const states = Array.from(checkboxes).map(cb => cb.checked);
+            localStorage.setItem('taskStates', JSON.stringify(states));
+        }
+
+        function downloadProgress() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const tasks = Array.from(checkboxes).map((cb, i) => {
+                const task = cb.closest('.task');
+                const title = task.querySelector('.task-title').textContent;
+                const status = cb.checked ? '✅' : '⬜';
+                return `${status} ${title}`;
+            });
+
+            const text = `# Progreso data-x - ${new Date().toLocaleDateString()}\n\n` + 
+                        `Completados: ${document.getElementById('completedCount').textContent}\n` +
+                        `Pendientes: ${document.getElementById('pendingCount').textContent}\n\n` +
+                        tasks.join('\n');
+
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'progreso-datax.txt';
+            a.click();
+        }
+
+        // Cargar estado guardado
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('taskStates');
+            if (saved) {
+                const states = JSON.parse(saved);
+                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach((cb, i) => {
+                    cb.checked = states[i] || false;
+                });
+                updateProgress();
+            }
+        });
+    </script>
+</body>
+</html>

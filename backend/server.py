@@ -1226,3 +1226,10 @@ async def export_markdown():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "data-x-audit-api"}
+
+@app.get("/tracker")
+async def tracker():
+    """Tracker simple de tareas pendientes"""
+    from fastapi.responses import FileResponse
+    return FileResponse("/app/tracker.html")
+
