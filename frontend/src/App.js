@@ -6,6 +6,8 @@ import RefactoringSection from './components/RefactoringSection';
 import AIMLSection from './components/AIMLSection';
 import ActionPlanSection from './components/ActionPlanSection';
 import ArchitectureSection from './components/ArchitectureSection';
+import NextStepsSection from './components/NextStepsSection';
+import FrontendPlanSection from './components/FrontendPlanSection';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import './App.css';
@@ -82,6 +84,8 @@ export default function App() {
       case 'refactoring': return <RefactoringSection data={getSectionData('refactoring')} />;
       case 'ai_ml': return <AIMLSection data={getSectionData('ai_ml')} />;
       case 'action_plan': return <ActionPlanSection data={getSectionData('action_plan')} />;
+      case 'next_steps': return <NextStepsSection data={getSectionData('next_steps')} />;
+      case 'frontend': return <FrontendPlanSection data={getSectionData('frontend')} />;
       default: return <Dashboard report={report} onSectionChange={setActiveSection} />;
     }
   };

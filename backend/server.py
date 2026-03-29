@@ -827,6 +827,274 @@ AUDIT_REPORT = {
                     }
                 ]
             }
+        },
+        {
+            "key": "next_steps",
+            "title": "Próximos Pasos",
+            "icon": "rocket",
+            "summary": "Items estratégicos fuera del plan de corrección original. Representan la siguiente capa de madurez del proyecto: testabilidad, resiliencia de infraestructura, y evolución del pipeline de IA.",
+            "issues": [
+                {
+                    "id": "NXT-001",
+                    "title": "Tests unitarios del backend con dependency_overrides",
+                    "severity": "high",
+                    "category": "testing",
+                    "file": "backend/tests/",
+                    "line_start": None,
+                    "line_end": None,
+                    "description": "Con ACT-010 implementado, los servicios ahora son inyectables vía Depends(). Esto permite reemplazarlos en tests con mocks usando app.dependency_overrides sin cargar modelos ML reales. El primer candidato es delete_session_data() (BUG-002 fix) y el ciclo completo de FAISS persist/load (BUG-003 fix).",
+                    "impact": "Sin tests, cada fix futuro puede romper silenciosamente los 14 fixes ya implementados. La deuda de testing es ahora el mayor riesgo de regresión.",
+                    "evidence": "0 archivos en backend/tests/. pytest no figura en requirements.txt.",
+                    "suggested_fix": {
+                        "summary": "Crear test suite con pytest + pytest-asyncio cubriendo los fixes críticos",
+                        "before": "# No existen tests. Cualquier cambio puede romper los fixes sin saberlo.",
+                        "after": "# backend/tests/test_mongo_repo.py\nimport pytest\nfrom unittest.mock import AsyncMock, patch\nfrom app.repositories.mongo import SessionRepository\n\n@pytest.mark.asyncio\nasync def test_delete_session_data_cleans_all_collections():\n    repo = SessionRepository()\n    # Mockear todas las colecciones\n    repo.sessions = AsyncMock()\n    repo.bronze = AsyncMock()\n    repo.silver = AsyncMock()\n    repo.gold = AsyncMock()\n    repo.embeddings_cache = AsyncMock()\n    repo.hybrid_embeddings_cache = AsyncMock()\n    repo.document_chunks = AsyncMock()\n\n    with patch('app.repositories.mongo.db') as mock_db:\n        mock_db.db = AsyncMock()\n        mock_db.db.__getitem__ = lambda self, key: AsyncMock()\n        result = await repo.delete_session_data('test-session-id')\n\n    assert result is True\n    repo.sessions.delete_one.assert_called_once_with({'session_id': 'test-session-id'})\n    repo.bronze.delete_many.assert_called_once()\n    repo.silver.delete_many.assert_called_once()\n    repo.gold.delete_many.assert_called_once()\n\n# backend/tests/test_analyze_endpoint.py\nfrom fastapi.testclient import TestClient\nfrom unittest.mock import MagicMock, AsyncMock\nfrom app.main import app\nfrom app.api.routes.analyze import get_retrieval_strategy\n\ndef test_analyze_loads_faiss_index():\n    mock_retrieval = MagicMock()\n    mock_retrieval.index = None\n    app.dependency_overrides[get_retrieval_strategy] = lambda: mock_retrieval\n    # ... assert que deserialize_index es llamado si hay cache\n    app.dependency_overrides = {}",
+                        "notes": "Instalar: pip install pytest pytest-asyncio httpx. Agregar a requirements.txt y al CI/CD pipeline."
+                    }
+                },
+                {
+                    "id": "NXT-002",
+                    "title": "CI/CD pipeline con GitHub Actions",
+                    "severity": "high",
+                    "category": "devops",
+                    "file": ".github/workflows/ci.yml",
+                    "line_start": None,
+                    "line_end": None,
+                    "description": "El proyecto no tiene pipeline de CI/CD. Cada PR se mergea sin verificación automática. Con 14 fixes implementados y una arquitectura de pipeline compleja (ARQ + FAISS + MongoDB + LiteLLM), un regression en cualquier fix puede pasar desapercibido.",
+                    "impact": "Un merge roto en producción puede deshabilitar el RAG (BUG-003) o crashear el worker (BUG-008) sin alertas automáticas.",
+                    "evidence": "No existe directorio .github/. No hay badge de CI en el README.",
+                    "suggested_fix": {
+                        "summary": "Crear workflow de GitHub Actions con lint + tests en cada PR",
+                        "before": "# No existe .github/workflows/ci.yml",
+                        "after": "# .github/workflows/ci.yml\nname: CI\n\non:\n  push:\n    branches: [main, develop]\n  pull_request:\n    branches: [main]\n\njobs:\n  backend:\n    runs-on: ubuntu-latest\n    services:\n      mongodb:\n        image: mongo:7\n        ports: ['27017:27017']\n      redis:\n        image: redis:7\n        ports: ['6379:6379']\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n      - name: Install dependencies\n        run: pip install -r backend/requirements.txt\n      - name: Lint (ruff)\n        run: ruff check backend/\n      - name: Tests\n        run: pytest backend/tests/ -v\n        env:\n          MONGODB_URI: mongodb://localhost:27017\n          REDIS_HOST: localhost\n          JWT_SECRET_KEY: test-secret-key\n\n  frontend:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n      - run: cd frontend && npm ci\n      - run: cd frontend && npm run build",
+                        "notes": "Agregar LITELLM_API_KEY como GitHub Secret para tests de integración opcionales."
+                    }
+                },
+                {
+                    "id": "NXT-003",
+                    "title": "Implementar OpenSearchRetrievalService para tier Enterprise",
+                    "severity": "medium",
+                    "category": "feature",
+                    "file": "backend/app/api/routes/analyze.py",
+                    "line_start": 28,
+                    "line_end": 44,
+                    "description": "El patrón Strategy en get_retrieval_strategy() tiene un TODO pendiente desde el inicio del proyecto: implementar OpenSearchRetrievalService para usuarios Enterprise. Con BUG-003 resuelto (FAISS persistido), el tier lite es funcional. El siguiente paso es implementar la alternativa escalable para Enterprise usando OpenSearch k-NN.",
+                    "impact": "Usuarios Enterprise pagan por funcionalidad diferenciada que actualmente reciben el mismo servicio que lite. Bloquea la propuesta de valor del tier premium.",
+                    "evidence": "analyze.py: TODO(sprint-X): Implementar OpenSearchRetrievalService para tier enterprise.",
+                    "suggested_fix": {
+                        "summary": "Crear OpenSearchRetrievalService implementando BaseRetrievalService",
+                        "before": "# get_retrieval_strategy() siempre retorna EmbeddingService() para ambos tiers",
+                        "after": "# backend/app/services/retrieval/opensearch_service.py\nfrom opensearchpy import AsyncOpenSearch\nfrom app.services.retrieval.base import BaseRetrievalService\nfrom app.core.config import settings\n\nclass OpenSearchRetrievalService(BaseRetrievalService):\n    def __init__(self):\n        self.client = AsyncOpenSearch(\n            hosts=[{'host': settings.opensearch_host, 'port': settings.opensearch_port}]\n        )\n        self.index_name = 'datax_embeddings'\n\n    async def search_hybrid_sources(self, query: str, session_id: str, top_k: int = 5):\n        # k-NN search con filtro por session_id\n        response = await self.client.search(\n            index=self.index_name,\n            body={\n                'query': {\n                    'bool': {\n                        'filter': [{'term': {'session_id': session_id}}],\n                        'must': [{'knn': {'embedding': {'vector': query_embedding, 'k': top_k}}}]\n                    }\n                }\n            }\n        )\n        return [hit['_source'] for hit in response['hits']['hits']]",
+                        "notes": "Agregar opensearch-py a requirements.txt. Configurar OPENSEARCH_HOST/PORT en Settings."
+                    }
+                },
+                {
+                    "id": "NXT-004",
+                    "title": "Mejorar guardrail anti-alucinaciones en analysis_agent.py",
+                    "severity": "low",
+                    "category": "ml_quality",
+                    "file": "backend/app/services/analysis_agent.py",
+                    "line_start": 57,
+                    "line_end": 83,
+                    "description": "El guardrail enforce_no_hallucinated_metrics extrae números con regex y verifica que existan en el contexto. El regex actual captura porcentajes (85%) y decimales simples (3.5) que el LLM puede calcular correctamente desde los datos. Esto genera ModelRetry innecesarios que aumentan latencia y costos.",
+                    "impact": "Falsos positivos que fuerzan al agente a regenerar respuestas válidas. +1-3 llamadas LLM por respuesta con métricas derivadas.",
+                    "evidence": "analysis_agent.py línea 63: `numbers = set(re.findall(r'\\b\\d+(?:[.,]\\d+)?\\b', response_text))` — captura todos los números incluyendo porcentajes.",
+                    "suggested_fix": {
+                        "summary": "Ajustar regex para excluir porcentajes, unidades y números pequeños del guardrail",
+                        "before": "numbers = set(re.findall(r'\\b\\d+(?:[.,]\\d+)?\\b', response_text))\nskip = {str(n) for n in range(13)} | {str(y) for y in range(1990, 2101)}\nnumbers -= skip",
+                        "after": "# Excluir: porcentajes (seguidos de %), unidades, años y números pequeños\n# Solo verificar enteros >= 100 sin contexto obvio de unidad\nnumbers = set(re.findall(\n    r'(?<!\\.)\\b(\\d{3,}(?:[.,]\\d+)?)\\b(?![%°\\'\"a-zA-Z])',\n    response_text\n))\nskip = {str(y) for y in range(1990, 2101)}  # Años\nnumbers -= skip",
+                        "notes": "Test: respuesta con '85% de valores nulos' no debe triggear ModelRetry si '85' es un valor calculado correctamente del dataset."
+                    }
+                }
+            ]
+        },
+        {
+            "key": "frontend",
+            "title": "Plan Frontend",
+            "icon": "monitor",
+            "summary": "Análisis del frontend Next.js 15 + TypeScript. Se identificaron issues de seguridad (token en localStorage), UX críticos (polling sin límite, historial de queries perdido) y deuda técnica de tipado. El frontend está bien estructurado pero tiene vulnerabilidades que afectan la experiencia en producción.",
+            "issues": [
+                {
+                    "id": "FE-001",
+                    "title": "JWT token almacenado en localStorage — vulnerable a XSS",
+                    "severity": "high",
+                    "category": "security",
+                    "file": "frontend/src/lib/api.ts",
+                    "line_start": 10,
+                    "line_end": 18,
+                    "description": "El token JWT se almacena en localStorage bajo la clave 'datax_token'. localStorage es accesible por cualquier script JavaScript en la página, incluyendo scripts de terceros inyectados (XSS). En una aplicación que maneja datasets potencialmente sensibles, un token robado permite acceso completo a todas las sesiones del usuario.",
+                    "impact": "Si un atacante logra inyectar código JS (XSS en el contenido del dataset analizado, por ejemplo), puede exfiltrar el token y acceder a todas las sesiones del usuario.",
+                    "evidence": "api.ts línea 13: `const TOKEN_KEY = 'datax_token'`\napi.ts línea 27: `localStorage.setItem(TOKEN_KEY, result.access_token)`",
+                    "suggested_fix": {
+                        "summary": "Migrar a httpOnly cookies gestionadas por el servidor Next.js o usar sessionStorage como mínimo",
+                        "before": "// En api.ts — token expuesto a XSS\nlocalStorage.setItem(TOKEN_KEY, result.access_token);\nconst token = localStorage.getItem(TOKEN_KEY);",
+                        "after": "// Opción 1 (recomendada): Route Handler de Next.js como proxy que setea httpOnly cookie\n// app/api/auth/login/route.ts\nexport async function POST(req: Request) {\n  const body = await req.json();\n  const res = await fetch(`${BACKEND_URL}/api/auth/login`, {\n    method: 'POST',\n    body: JSON.stringify(body),\n    headers: { 'Content-Type': 'application/json' },\n  });\n  const data = await res.json();\n  const response = NextResponse.json({ user: data.user });\n  response.cookies.set('datax_token', data.access_token, {\n    httpOnly: true,   // No accesible desde JS\n    secure: true,     // Solo HTTPS\n    sameSite: 'strict',\n    maxAge: 60 * 60 * 24, // 24 horas\n  });\n  return response;\n}",
+                        "notes": "La Opción 1 requiere que todas las llamadas al backend pasen por Route Handlers de Next.js como proxy. La Opción 2 (sessionStorage) reduce el riesgo pero no lo elimina: el token sigue siendo accesible desde JS."
+                    }
+                },
+                {
+                    "id": "FE-002",
+                    "title": "Polling de sesión sin límite de intentos ni backoff — loop infinito posible",
+                    "severity": "high",
+                    "category": "reliability",
+                    "file": "frontend/src/app/workspace/page.tsx",
+                    "line_start": 64,
+                    "line_end": 85,
+                    "description": "La función poll() dentro de loadSession() se llama recursivamente con setTimeout sin límite de intentos ni timeout total. Si el worker ARQ se cuelga o el documento queda en estado 'processing' indefinidamente, el polling corre para siempre consumiendo requests y memoria. No hay feedback al usuario tras N intentos fallidos.",
+                    "impact": "Usuarios con documentos atascados ven el spinner eternamente sin poder reintentar. En producción con muchos usuarios, los requests infinitos pueden saturar el backend.",
+                    "evidence": "workspace/page.tsx línea 69: `const poll = async () => {` llamada recursivamente con `setTimeout(poll, 2000)` sin contador de intentos.",
+                    "suggested_fix": {
+                        "summary": "Agregar máximo de intentos, backoff exponencial y timeout global",
+                        "before": "const poll = async () => {\n  try {\n    const d = await api.getSession(sid);\n    if (d.status === 'ready') loadReport(sid);\n    else if (d.status === 'error') { ... }\n    else setTimeout(poll, 2000);  // Sin límite\n  } catch (e) {\n    console.error('Polling error', e);\n  }\n};\npoll();",
+                        "after": "const MAX_POLLS = 150;  // 5 minutos máx (150 * 2s)\nlet attempts = 0;\n\nconst poll = async () => {\n  attempts++;\n  if (attempts > MAX_POLLS) {\n    setError({\n      title: 'Tiempo de procesamiento excedido',\n      desc: 'El análisis tardó más de lo esperado. Reintenta o contacta soporte.'\n    });\n    setState('error');\n    return;\n  }\n  try {\n    const d = await api.getSession(sid);\n    setSession(d);\n    if (d.status === 'ready') {\n      loadReport(sid);\n    } else if (d.status === 'error') {\n      setError({ title: 'Error en procesamiento', desc: 'El pipeline falló.' });\n      setState('error');\n    } else {\n      // Backoff suave: 2s primeros 30 intentos, luego 5s\n      const delay = attempts < 30 ? 2000 : 5000;\n      setTimeout(poll, delay);\n    }\n  } catch (e) {\n    console.error('Polling error', e);\n    setTimeout(poll, 5000);  // Reintento tras error de red\n  }\n};\npoll();",
+                        "notes": "Con MAX_POLLS=150 y backoff, el timeout máximo es ~5min para documentos complejos, compatible con el job_timeout=600s del worker ARQ."
+                    }
+                },
+                {
+                    "id": "FE-003",
+                    "title": "getReport() llamado antes de que el worker ARQ complete el pipeline",
+                    "severity": "high",
+                    "category": "bug",
+                    "file": "frontend/src/app/workspace/page.tsx",
+                    "line_start": 100,
+                    "line_end": 108,
+                    "description": "En handleUploadComplete(), se llama loadReport(sessionRes.session_id) inmediatamente después de crear la sesión. Pero la sesión recién creada tiene status='created' o 'processing' — el worker ARQ aún no terminó. getReport() falla porque Bronze/Silver/Gold no están disponibles, causando el error 'Error al generar reporte' para todos los uploads nuevos.",
+                    "impact": "Todos los uploads nuevos muestran error inmediatamente, aunque el pipeline esté funcionando correctamente. El usuario ve un error falso y puede pensar que el sistema está roto.",
+                    "evidence": "workspace/page.tsx línea 100: `loadReport(sessionRes.session_id)` llamado sin verificar `sessionRes.status === 'ready'`.",
+                    "suggested_fix": {
+                        "summary": "Redirigir al polling en lugar de llamar loadReport() directamente tras el upload",
+                        "before": "const handleUploadComplete = (sessionRes: SessionResponse) => {\n  setSession(sessionRes);\n  router.push(`/workspace?session_id=${sessionRes.session_id}`);\n  loadReport(sessionRes.session_id);  // Error: pipeline aún no terminó\n};",
+                        "after": "const handleUploadComplete = (sessionRes: SessionResponse) => {\n  setSession(sessionRes);\n  router.push(`/workspace?session_id=${sessionRes.session_id}`);\n  // Iniciar polling en lugar de cargar el reporte directo.\n  // El pipeline ARQ puede tardar 30-120s. loadReport() se llama\n  // automáticamente desde loadSession() cuando status === 'ready'.\n  loadSession(sessionRes.session_id);\n};",
+                        "notes": "loadSession() ya maneja el flujo completo: polling → status=ready → loadReport(). Solo hay que reemplazar la llamada directa."
+                    }
+                },
+                {
+                    "id": "FE-004",
+                    "title": "Requests en vuelo no se cancelan al desmontar el componente",
+                    "severity": "medium",
+                    "category": "reliability",
+                    "file": "frontend/src/app/workspace/page.tsx",
+                    "line_start": 30,
+                    "line_end": 55,
+                    "description": "Las llamadas a api.getReport(), api.getSession() y api.analyze() no usan AbortController. Si el usuario navega fuera de la página mientras una request está en vuelo, React muestra el warning 'setState on unmounted component' y puede causar comportamientos inesperados si el componente se remonta.",
+                    "impact": "Memory leaks en navegación rápida. Posibles race conditions si el usuario vuelve a la página antes de que complete una request anterior.",
+                    "evidence": "loadReport() y loadSession() no usan AbortController ni cleanup en el useEffect.",
+                    "suggested_fix": {
+                        "summary": "Usar AbortController en los useEffect y limpiar en el cleanup",
+                        "before": "const loadReport = useCallback(async (sid: string) => {\n  setState('loading_report');\n  try {\n    const data = await api.getReport(sid);\n    setReport(data);\n  } catch (err) { ... }\n}, []);",
+                        "after": "const loadReport = useCallback(async (sid: string, signal?: AbortSignal) => {\n  setState('loading_report');\n  try {\n    const data = await api.getReport(sid, signal);\n    if (!signal?.aborted) {\n      setReport(data);\n      setState('ready');\n    }\n  } catch (err) {\n    if ((err as Error).name !== 'AbortError') {\n      setError({ title: 'Error al generar reporte', desc: String(err) });\n      setState('error');\n    }\n  }\n}, []);\n\nuseEffect(() => {\n  const controller = new AbortController();\n  if (sessionIdParam) loadSession(sessionIdParam, controller.signal);\n  return () => controller.abort();  // Cleanup al desmontar\n}, [sessionIdParam]);",
+                        "notes": "api.ts también debe aceptar signal?: AbortSignal y pasarlo al fetch()."
+                    }
+                },
+                {
+                    "id": "FE-005",
+                    "title": "QueryPanel sin historial de conversación — respuestas previas se pierden",
+                    "severity": "medium",
+                    "category": "ux",
+                    "file": "frontend/src/components/QueryPanel.tsx",
+                    "line_start": 16,
+                    "line_end": 45,
+                    "description": "Cada nueva query sobreescribe el resultado anterior con setResult(response). El usuario no puede ver respuestas anteriores sin volver a preguntar. Para una herramienta de análisis de datos donde el usuario explora el dataset con múltiples preguntas, perder el historial degrada significativamente la UX.",
+                    "impact": "El usuario tiene que recordar manualmente las respuestas anteriores. No puede comparar ni referenciar respuestas en la misma sesión.",
+                    "evidence": "QueryPanel.tsx línea 32: `setResult(response)` reemplaza el estado anterior.",
+                    "suggested_fix": {
+                        "summary": "Cambiar result (objeto) a messages (array) para mantener historial de conversación",
+                        "before": "const [result, setResult] = useState<AnalyzeResponse | null>(null);\n// ...\nsetResult(response);\n// ...\n{result && <div>Respuesta...</div>}",
+                        "after": "interface Message {\n  query: string;\n  response: AnalyzeResponse;\n  timestamp: Date;\n}\n\nconst [messages, setMessages] = useState<Message[]>([]);\n// ...\nsetMessages(prev => [...prev, {\n  query: currentQuery,\n  response,\n  timestamp: new Date()\n}]);\n// ...\n<div className='messages-list'>\n  {messages.map((msg, i) => (\n    <div key={i} className='message-item'>\n      <div className='query-bubble'>{msg.query}</div>\n      <div className='response-bubble'>{msg.response.answer}</div>\n    </div>\n  ))}\n</div>\n<button onClick={() => setMessages([])}>Limpiar historial</button>",
+                        "notes": "Limitar a los últimos 20 mensajes en memoria para evitar crecimiento infinito del estado."
+                    }
+                },
+                {
+                    "id": "FE-006",
+                    "title": "Errores de red en polling no notifican al usuario",
+                    "severity": "medium",
+                    "category": "ux",
+                    "file": "frontend/src/app/workspace/page.tsx",
+                    "line_start": 75,
+                    "line_end": 82,
+                    "description": "Cuando el polling falla con un error de red (backend caído, timeout), el código solo hace console.error() y reintenta en 5s. El usuario sigue viendo el spinner sin saber que hay un problema de conectividad. No hay toast ni indicador visual de 'reconnecting...'.",
+                    "impact": "En deployments con backend inestable, el usuario ve el spinner indefinidamente sin poder tomar acción (recargar, esperar, contactar soporte).",
+                    "evidence": "workspace/page.tsx línea 79: `console.error('Polling error', e)` — sin actualización de UI.",
+                    "suggested_fix": {
+                        "summary": "Mostrar toast/banner de reconexión cuando el polling falla repetidamente",
+                        "before": "} catch (e) {\n  console.error('Polling error', e);\n  // Silencioso para el usuario\n}",
+                        "after": "} catch (e) {\n  networkErrors++;\n  if (networkErrors >= 3) {\n    // Mostrar banner de reconexión después de 3 fallos consecutivos\n    setConnectionWarning('Problemas de conexión. Reintentando...');\n  }\n  setTimeout(poll, 5000);\n}",
+                        "notes": "Implementar un componente ConnectionBanner que aparezca/desaparezca automáticamente."
+                    }
+                },
+                {
+                    "id": "FE-007",
+                    "title": "Tipos any/unknown en contracts.ts generan runtime errors silenciosos",
+                    "severity": "medium",
+                    "category": "code_quality",
+                    "file": "frontend/src/types/contracts.ts",
+                    "line_start": 1,
+                    "line_end": 15,
+                    "description": "Artifact.data: unknown y source_metadata: Record<string, unknown> son tipos que fuerzan casts implícitos en todos los componentes que los consumen. Cuando el backend cambia la estructura (por ejemplo, agrega un campo a source_metadata), el frontend no genera error en compilación — el bug aparece en runtime.",
+                    "impact": "Cambios en el contrato del backend no son detectados por TypeScript. Los bugs de tipado solo aparecen en producción.",
+                    "evidence": "contracts.ts línea 2: `data: unknown`. workspace/page.tsx: `session.source_metadata.filename as string` (cast forzado).",
+                    "suggested_fix": {
+                        "summary": "Tipar explícitamente source_metadata y usar Zod para validación en runtime",
+                        "before": "export interface SessionResponse {\n  source_metadata: Record<string, unknown>;  // Tipo débil\n}\n// En workspace:\nconst filename = session.source_metadata.filename as string;  // Cast inseguro",
+                        "after": "// contracts.ts — tipos explícitos\nexport interface SourceMetadata {\n  filename: string;\n  content_type: string;\n  file_size_bytes: number;\n  table_index?: number;\n}\n\nexport interface SessionResponse {\n  source_metadata: SourceMetadata;  // Tipo fuerte\n}\n\n// workspace.tsx — sin casts\nconst filename = session.source_metadata.filename;  // Type-safe",
+                        "notes": "Para validación en runtime agregar: import { z } from 'zod' y crear schemas. Esto detecta cambios de API en tests de integración."
+                    }
+                },
+                {
+                    "id": "FE-008",
+                    "title": "Tab activo no persiste en URL — se pierde al recargar",
+                    "severity": "low",
+                    "category": "ux",
+                    "file": "frontend/src/app/workspace/page.tsx",
+                    "line_start": 22,
+                    "line_end": 24,
+                    "description": "El tab activo se almacena solo en estado local (useState). Al recargar la página, siempre se vuelve al tab 'overview'. Tampoco es posible compartir un link directo a un tab específico (ej: '?tab=findings' para compartir con un colega).",
+                    "impact": "Mala UX para usuarios que trabajan con reports grandes y necesitan recargar. No permite deep-linking a tabs específicos.",
+                    "evidence": "workspace/page.tsx línea 22: `const [activeTab, setActiveTab] = useState('overview')` — sin sincronización con URL.",
+                    "suggested_fix": {
+                        "summary": "Sincronizar el tab activo con el query param ?tab= en la URL",
+                        "before": "const [activeTab, setActiveTab] = useState('overview');",
+                        "after": "const tabParam = searchParams.get('tab') || 'overview';\nconst [activeTab, setActiveTab] = useState(tabParam);\n\nconst handleTabChange = (tab: string) => {\n  setActiveTab(tab);\n  // Actualizar URL sin re-render completo\n  const params = new URLSearchParams(searchParams.toString());\n  params.set('tab', tab);\n  router.replace(`/workspace?${params.toString()}`, { scroll: false });\n};",
+                        "notes": "Validar que tabParam sea un valor permitido antes de usarlo como estado inicial."
+                    }
+                },
+                {
+                    "id": "FE-009",
+                    "title": "NEXT_PUBLIC_API_BASE_URL hardcodeado al puerto incorrecto (8000 vs 8001)",
+                    "severity": "low",
+                    "category": "bug",
+                    "file": "frontend/src/lib/api.ts",
+                    "line_start": 13,
+                    "line_end": 13,
+                    "description": "El fallback de NEXT_PUBLIC_API_BASE_URL está seteado a 'http://localhost:8000' pero el backend FastAPI corre en el puerto 8001 según la configuración del servidor. Esto causa errores de conexión silenciosos en desarrollo si la variable de entorno no está seteada.",
+                    "impact": "Desarrolladores nuevos que clonan el repositorio sin configurar .env.local ven errores de conexión sin causa obvia.",
+                    "evidence": "api.ts línea 13: `const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'` — el backend corre en 8001.",
+                    "suggested_fix": {
+                        "summary": "Corregir el puerto del fallback y agregar validación explícita",
+                        "before": "const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';",
+                        "after": "const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001';\n\nif (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_API_BASE_URL) {\n  console.warn('[api.ts] NEXT_PUBLIC_API_BASE_URL no configurada. Usando fallback:', API_BASE_URL);\n}",
+                        "notes": "Agregar NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 al .env.example para guiar a nuevos developers."
+                    }
+                },
+                {
+                    "id": "FE-010",
+                    "title": "Manipulación directa del DOM en QueryPanel — anti-pattern de React",
+                    "severity": "low",
+                    "category": "code_quality",
+                    "file": "frontend/src/components/QueryPanel.tsx",
+                    "line_start": 44,
+                    "line_end": 52,
+                    "description": "El scroll y highlight de fuentes usa document.getElementById() + classList.add/remove() directamente. Esto bypasea el sistema de renderizado de React y puede causar inconsistencias si el componente se re-renderiza entre la llamada al DOM y el timeout de limpieza.",
+                    "impact": "Potential race condition: el elemento puede haberse desmontado antes de que el setTimeout limpie las clases CSS. No testeable con React Testing Library.",
+                    "evidence": "QueryPanel.tsx línea 44: `const element = document.getElementById(sourceId)` + `element.classList.add('ring-2', 'ring-indigo-500')`.",
+                    "suggested_fix": {
+                        "summary": "Usar refs y estado de React en lugar de manipulación directa del DOM",
+                        "before": "const element = document.getElementById(sourceId);\nif (element) {\n  element.scrollIntoView({ behavior: 'smooth', block: 'center' });\n  element.classList.add('ring-2', 'ring-indigo-500');\n  setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 3000);\n}",
+                        "after": "const [highlightedSource, setHighlightedSource] = useState<string | null>(null);\nconst sourceRefs = useRef<Record<string, HTMLElement | null>>({});\n\nconst handleSourceClick = (sourceId: string) => {\n  const el = sourceRefs.current[sourceId];\n  if (el) {\n    el.scrollIntoView({ behavior: 'smooth', block: 'center' });\n    setHighlightedSource(sourceId);\n    setTimeout(() => setHighlightedSource(null), 3000);\n  }\n};\n\n// En el JSX:\n<div\n  ref={el => { sourceRefs.current[sourceId] = el; }}\n  className={cn('source-item', highlightedSource === sourceId && 'ring-2 ring-indigo-500')}\n>",
+                        "notes": "cn() de shadcn/ui maneja la condicionalidad de clases CSS de forma limpia."
+                    }
+                }
+            ]
         }
     ]
 }

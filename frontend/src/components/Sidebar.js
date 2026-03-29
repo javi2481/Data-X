@@ -7,9 +7,18 @@ const NAV_ITEMS = [
   { key: 'refactoring', label: 'Refactorización', icon: '⚙️' },
   { key: 'ai_ml', label: 'Optimización IA/ML', icon: '🧠' },
   { key: 'action_plan', label: 'Plan de Acción', icon: '🞹' },
+  { key: 'next_steps', label: 'Siguientes Pasos', icon: '🚀' },
+  { key: 'frontend', label: 'Plan Frontend', icon: '💻' },
 ];
 
-const SEVERITY_COUNTS = { bugs: '13 issues', refactoring: '5 issues', ai_ml: '6 issues', action_plan: '14 acciones' };
+const SEVERITY_COUNTS = { 
+  bugs: '13 issues', 
+  refactoring: '5 issues', 
+  ai_ml: '6 issues', 
+  action_plan: '14 acciones',
+  next_steps: '4 pasos',
+  frontend: '10 issues'
+};
 
 export default function Sidebar({ activeSection, onSectionChange, meta, collapsed, onToggleCollapse, onExport }) {
   return (
