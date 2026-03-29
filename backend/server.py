@@ -509,82 +509,97 @@ AUDIT_REPORT = {
                     "id": "REF-001",
                     "title": "Servicios instanciados a nivel de módulo en sessions.py crean singletons implícitos",
                     "severity": "high",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "design",
                     "file": "backend/app/api/routes/sessions.py",
-                    "line_start": 43,
-                    "line_end": 57,
+                    "line_start": 46,
+                    "line_end": 90,
                     "description": "Sessions.py instancia 12 servicios a nivel de módulo (fuera de funciones). Esto crea singletons globales que: (1) no pueden ser reemplazados en tests, (2) cargan todos los modelos ML al iniciar FastAPI (lentitud de startup), (3) no son thread-safe si comparten estado mutable.",
                     "impact": "Startup de FastAPI lento. Imposible testear endpoints sin cargar modelos ML reales. Estado compartido entre requests puede causar bugs en concurrencia.",
                     "suggested_fix": {
                         "summary": "Usar FastAPI Dependency Injection para instanciar servicios por request o como dependencias cacheadas",
                         "before": "# A nivel de módulo (global, singleton):\ningest_service = IngestService()\nnormalization_service = NormalizationService()\n# ... etc ...",
                         "after": "from functools import lru_cache\nfrom fastapi import Depends\n\n@lru_cache(maxsize=1)\ndef get_ingest_service() -> IngestService:\n    return IngestService()\n\n@lru_cache(maxsize=1)\ndef get_llm_service() -> LLMService:\n    return LLMService()\n\n# En el endpoint:\nasync def create_session(\n    file: UploadFile,\n    ingest_svc: IngestService = Depends(get_ingest_service),\n    llm_svc: LLMService = Depends(get_llm_service),\n):\n    ...",
-                        "notes": "lru_cache(maxsize=1) garantiza un singleton, pero reemplazable en tests con app.dependency_overrides."
+                        "notes": "Fix aplicado en ACT-010. Todos los servicios usan @lru_cache + Depends para inyección testeable."
                     }
                 },
                 {
                     "id": "REF-002",
                     "title": "Acceso a atributos de Finding mezcla Pydantic y dict de forma inconsistente",
                     "severity": "medium",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "code_quality",
                     "file": "backend/app/services/llm_service.py",
-                    "line_start": 45,
-                    "line_end": 52,
+                    "line_start": 4,
+                    "line_end": 4,
                     "description": "El código en llm_service.py accede a los atributos de Finding con lógica duplicada: `f.title if not isinstance(f, dict) else f.get('title')`. Este patrón se repite 15+ veces en el archivo. Indica que la capa de serialización no es consistente: a veces se pasan objetos Pydantic y a veces dicts.",
                     "impact": "Código verbose y propenso a bugs. Si se agrega un nuevo campo a Finding, hay que actualizar 15+ lugares.",
                     "suggested_fix": {
                         "summary": "Normalizar a dict en el punto de entrada y usar dict.get() consistentemente",
                         "before": "f_what = getattr(finding, 'what', finding.get('what', '')) if not isinstance(finding, dict) else finding.get('what', '')",
-                        "after": "def _to_dict(obj: Any) -> dict:\n    \"\"\"Normaliza Pydantic models o dicts a dict puro.\"\"\"\n    if isinstance(obj, dict):\n        return obj\n    if hasattr(obj, 'model_dump'):\n        return obj.model_dump()\n    return vars(obj)\n\n# En el método, una sola línea al inicio:\nf = _to_dict(finding)\nf_what = f.get('what', '')\nf_so_what = f.get('so_what', '')\nf_now_what = f.get('now_what', '')",
-                        "notes": "Esta función helper debería vivir en app/utils.py y ser importada donde se necesite."
+                        "after": "from app.utils import to_dict\n\nf = to_dict(finding)\nf_what = f.get('what', '')\nf_so_what = f.get('so_what', '')\nf_now_what = f.get('now_what', '')",
+                        "notes": "Fix aplicado en ACT-013. Helper to_dict() creado en app/utils.py y usado en llm_service.py."
                     }
                 },
                 {
                     "id": "REF-003",
                     "title": "EmbeddingService hereda de BaseRetrievalService pero no persiste el índice por sesión",
                     "severity": "medium",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "design",
                     "file": "backend/app/services/embedding_service.py",
-                    "line_start": 1,
-                    "line_end": 20,
+                    "line_start": 8,
+                    "line_end": 26,
                     "description": "EmbeddingService mantiene un único índice FAISS global (self.index) para todas las sesiones. Si se procesaran dos documentos en paralelo, el segundo sobreescribiría el índice del primero. Actualmente el sistema solo permite una sesión activa por vez en el worker, pero esto es frágil.",
                     "impact": "Race condition si se procesan documentos en paralelo. No escala a multi-session.",
                     "suggested_fix": {
                         "summary": "Hacer el índice por sesión en lugar de global, o extraer la persistencia al repositorio",
                         "before": "class EmbeddingService(BaseRetrievalService):\n    def __init__(self):\n        self.model = SentenceTransformer(...)\n        self.index = None  # ← Un único índice global",
-                        "after": "class EmbeddingService(BaseRetrievalService):\n    # Los modelos son compartidos (thread-safe para inferencia)\n    _shared_model: Optional[SentenceTransformer] = None\n    _shared_reranker: Optional[CrossEncoder] = None\n\n    def __init__(self):\n        if EmbeddingService._shared_model is None:\n            EmbeddingService._shared_model = SentenceTransformer(self._model_name)\n        self.model = EmbeddingService._shared_model\n        self.index = None  # Por sesión (se carga desde MongoDB)",
-                        "notes": "Los modelos SentenceTransformer son thread-safe para inferencia. Compartirlos entre instancias ahorra ~500MB de RAM."
+                        "after": "class EmbeddingService(BaseRetrievalService):\n    # Los modelos son compartidos (thread-safe para inferencia)\n    _model_cache: dict = {}\n    _model_lock = threading.Lock()\n\n    def __init__(self):\n        with EmbeddingService._model_lock:\n            if model_name not in EmbeddingService._model_cache:\n                EmbeddingService._model_cache[model_name] = SentenceTransformer(model_name)\n        self.model = EmbeddingService._model_cache[model_name]\n        self.index = None  # Por sesión (se carga desde MongoDB)",
+                        "notes": "Fix aplicado en AI-001. Modelos compartidos a nivel de clase con thread.Lock. Índice por sesión + persistencia en MongoDB (BUG-003)."
                     }
                 },
                 {
                     "id": "REF-004",
                     "title": "Settings no tiene validación de valores críticos al startup",
                     "severity": "medium",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "reliability",
                     "file": "backend/app/core/config.py",
-                    "line_start": 1,
-                    "line_end": 30,
+                    "line_start": 34,
+                    "line_end": 48,
                     "description": "La clase Settings usa tipos Optional para litellm_api_key y litellm_model, con defaults vacíos. Esto permite que el servidor arranque sin configuración de LLM, pero los errores solo se descubren en runtime cuando se intenta hacer el primer análisis.",
                     "impact": "Operadores pueden desplegar el servicio sin API key y descubrirlo solo cuando usuarios reales intentan usar IA.",
                     "suggested_fix": {
                         "summary": "Agregar validadores de Pydantic para detectar configuraciones incompletas en startup",
                         "before": "class Settings(BaseSettings):\n    litellm_api_key: Optional[str] = \"\"\n    litellm_model: Optional[str] = \"gpt-4o-mini\"",
                         "after": "from pydantic import field_validator, model_validator\n\nclass Settings(BaseSettings):\n    litellm_api_key: Optional[str] = \"\"\n    litellm_model: str = \"gpt-4o-mini\"\n    \n    @model_validator(mode='after')\n    def check_llm_config(self) -> 'Settings':\n        if not self.litellm_api_key:\n            import warnings\n            warnings.warn(\"LITELLM_API_KEY no configurada. Las funciones de IA estarán deshabilitadas.\")\n        return self",
-                        "notes": "En producción, considerar hacer litellm_api_key required (sin default) para forzar configuración explícita."
+                        "notes": "Fix aplicado en ACT-014. Validator implementado con warnings en startup."
                     }
                 },
                 {
                     "id": "REF-005",
                     "title": "IngestService carga OpenCV para TODOS los PDFs, incluso los de alta calidad",
                     "severity": "low",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "performance",
                     "file": "backend/app/services/ingest.py",
-                    "line_start": 45,
-                    "line_end": 57,
+                    "line_start": 52,
+                    "line_end": 69,
                     "description": "Para cada PDF, se importa OpenCVPipeline, se convierten todas las páginas a imágenes cv2, y se evalúa la calidad de la primera. Esto añade 2-5 segundos de overhead para PDFs de alta calidad que no necesitan este análisis. El quality gate debería ser opcional o configurado por usuario.",
                     "impact": "Latencia adicional de 2-5 segundos en todos los PDFs. Carga de OpenCV en el processo de ingesta.",
                     "suggested_fix": {
                         "summary": "Hacer el OpenCV quality gate opcional mediante un parámetro de configuración",
+                        "before": "if is_pdf:\n    from app.services.opencv_pipeline import OpenCVPipeline\n    cv_pipeline = OpenCVPipeline()\n    images = cv_pipeline.pdf_to_cv2_images(file_bytes)\n    if images:\n        qg_result = cv_pipeline.quality_gate_image(images[0])\n        if not qg_result[\"passed\"]:\n            raise ValueError(...)",
+                        "after": "from app.core.config import settings\n\nif is_pdf and settings.enable_pdf_quality_gate:\n    from app.services.opencv_pipeline import OpenCVPipeline\n    cv_pipeline = OpenCVPipeline()\n    images = cv_pipeline.pdf_to_cv2_images(file_bytes)\n    if images:\n        qg_result = cv_pipeline.quality_gate_image(images[0])\n        if not qg_result[\"passed\"]:\n            raise ValueError(...)\nelif is_pdf:\n    logger.debug(\"pdf_quality_gate_disabled\")",
+                        "notes": "Fix implementado. Agregado enable_pdf_quality_gate: bool = True en Settings. Configurable por .env."
+                    }
+                },
                         "before": "if is_pdf:\n    from app.services.opencv_pipeline import OpenCVPipeline\n    cv_pipeline = OpenCVPipeline()\n    images = cv_pipeline.pdf_to_cv2_images(file_bytes)\n    if images:\n        qg_result = cv_pipeline.quality_gate_image(images[0])",
                         "after": "# Hacer el quality gate opcional\nENABLE_PDF_QUALITY_GATE = settings.enable_pdf_quality_gate  # Default: True\n\nif is_pdf and ENABLE_PDF_QUALITY_GATE:\n    from app.services.opencv_pipeline import OpenCVPipeline\n    cv_pipeline = OpenCVPipeline()\n    images = cv_pipeline.pdf_to_cv2_images(file_bytes)\n    if images:\n        qg_result = cv_pipeline.quality_gate_image(images[0])\n        if not qg_result[\"passed\"]:\n            logger.warning(\"pdf_quality_failed\", variance=qg_result[\"variance\"])",
                         "notes": "Agregar enable_pdf_quality_gate: bool = True a Settings para control por entorno."
