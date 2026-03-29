@@ -1,3 +1,4 @@
+import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from app.schemas.analyze import AnalyzeRequest, ErrorResponse
@@ -12,21 +13,29 @@ from app.core.rate_limit import limiter
 from app.api.dependencies import get_current_user
 from typing import Any, List
 
+logger = structlog.get_logger(__name__)
+
 router = APIRouter()
 suggested_questions_service = get_suggested_questions_service()
 
 def get_retrieval_strategy(current_user: dict) -> BaseRetrievalService:
     """
     Patrón Strategy: Decide dinámicamente qué motor vectorial usar según el tenant.
+    
+    TODO(NXT-003): Implementar OpenSearchRetrievalService para tier Enterprise.
+    Por ahora, todos los tiers usan FAISS in-memory con persistencia en MongoDB.
     """
     tier = current_user.get("tier", "lite")
     
-    if tier == "enterprise":
-        # TODO: Retornar OpenSearchRetrievalService() cuando se implemente en el siguiente paso
-        logger.info("strategy_injection", strategy="opensearch_planned", user=current_user["sub"])
-        return EmbeddingService()
-    
-    logger.info("strategy_injection", strategy="faiss_in_memory", user=current_user["sub"])
+    # Todos los tiers usan el mismo servicio por ahora.
+    # La diferenciación por tier se implementará en el sprint siguiente
+    # con OpenSearch k-NN para Enterprise (ver NXT-003 en el plan de acción).
+    logger.info(
+        "retrieval_strategy_selected",
+        tier=tier,
+        strategy="faiss_persisted",
+        user=current_user["sub"]
+    )
     return EmbeddingService()
 
 @router.post("", 
@@ -87,6 +96,27 @@ async def analyze(
     # 2. Inyección de Dependencia Dinámica (Strategy)
     retrieval_svc = get_retrieval_strategy(current_user)
 
+    # 3. Cargar el índice FAISS persistido desde MongoDB
+    # El índice fue serializado por el worker al finalizar el pipeline Silver.
+    # Sin esta carga, retrieval_svc.index = None y search_hybrid_sources()
+    # retorna siempre lista vacía (RAG roto en producción).
+    cached = await session_repo.get_hybrid_embeddings_cache(session_id)
+    if cached:
+        index_bytes = cached.get("index_bytes", b"")
+        if index_bytes:
+            retrieval_svc.deserialize_index(bytes(index_bytes))
+            retrieval_svc.source_map = cached.get("source_map", {})
+            retrieval_svc.source_ids = cached.get("source_ids", [])
+            logger.info(
+                "faiss_index_loaded",
+                session_id=session_id,
+                sources=len(retrieval_svc.source_ids),
+            )
+        else:
+            logger.warning("faiss_index_empty_cache", session_id=session_id)
+    else:
+        logger.warning("faiss_index_not_found", session_id=session_id)
+
     deps = AnalysisDeps(
         session_id=session_id,
         user_id=current_user["sub"],
@@ -104,15 +134,12 @@ async def analyze(
     )
 
     try:
-        import structlog
-        logger = structlog.get_logger(__name__)
         logger.info("agent_run_start", session_id=session_id, query=body.query)
         result = await analysis_agent.run(body.query, deps=deps)
         logger.info("agent_run_complete", session_id=session_id)
         return result.data
     except Exception as e:
-        import structlog
-        structlog.get_logger(__name__).error("agent_run_failed", error=str(e), session_id=session_id)
+        logger.error("agent_run_failed", error=str(e), session_id=session_id)
         return JSONResponse(status_code=500, content={"error_code": "AGENT_ERROR", "message": f"Error en el razonamiento del agente: {str(e)}"})
 
 
