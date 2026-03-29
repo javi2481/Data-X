@@ -66,6 +66,19 @@ AUDIT_REPORT = {
                 ],
                 "lines_changed": 48,
                 "description": "Worker serializa y persiste el índice FAISS + source_map + source_ids en MongoDB al finalizar Silver. El endpoint /api/analyze carga el índice antes de construir AnalysisDeps. RAG ahora funcional en producción."
+            },
+            {
+                "bug_id": "ACT-004",
+                "title": "PipelineOrchestrator movido al contexto del worker ARQ + caché de modelos ML",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/act-004-worker-orchestrator-cache",
+                "files_changed": [
+                    "backend/app/worker.py",
+                    "backend/app/services/embedding_service.py"
+                ],
+                "lines_changed": 41,
+                "description": "Worker instancia PipelineOrchestrator una sola vez en on_startup(ctx). EmbeddingService ahora usa caché a nivel de clase (threading.Lock) para SentenceTransformer y CrossEncoder. Reduce latencia por tarea en 30-60s y RAM en ~60%."
             }
         ]
     },
@@ -240,6 +253,8 @@ AUDIT_REPORT = {
                     "id": "BUG-008",
                     "title": "PipelineOrchestrator instancia todos los servicios ML en cada tarea ARQ",
                     "severity": "high",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-004-worker-orchestrator-cache",
                     "category": "performance",
                     "file": "backend/app/worker.py",
                     "line_start": 33,
@@ -449,6 +464,8 @@ AUDIT_REPORT = {
                     "id": "AI-001",
                     "title": "Modelos SentenceTransformer y CrossEncoder se cargan en cada instancia",
                     "severity": "critical",
+                    "status": "fixed",
+                    "fix_branch": "fix/act-004-worker-orchestrator-cache",
                     "category": "ml_performance",
                     "file": "backend/app/services/embedding_service.py",
                     "line_start": 7,
