@@ -74,3 +74,41 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user
+
+@router.get("/me/usage", summary="Obtener estadísticas de uso y costos")
+async def get_my_usage(current_user: dict = Depends(get_current_user)):
+    """
+    Calcula el costo total de LLM, tokens consumidos y tiempo de procesamiento
+    asociado a las sesiones de este usuario (Tier B2B/Enterprise).
+    """
+    user_id = current_user["sub"]
+    
+    pipeline = [
+        {"$lookup": {
+            "from": "sessions",
+            "localField": "session_id",
+            "foreignField": "session_id",
+            "as": "session_info"
+        }},
+        {"$unwind": "$session_info"},
+        {"$match": {"session_info.user_id": user_id}},
+        {"$group": {
+            "_id": "$session_info.user_id",
+            "total_cost_usd": {"$sum": "$llm_cost_usd"},
+            "total_tokens": {"$sum": "$tokens_to_llm"},
+            "total_processing_time_ms": {"$sum": "$duration_ms"}
+        }}
+    ]
+    
+    cursor = db.db.usage_events.aggregate(pipeline)
+    result = await cursor.to_list(length=1)
+    
+    sessions_count = await db.db.sessions.count_documents({"user_id": user_id})
+    
+    return {
+        "user_id": user_id,
+        "total_sessions": sessions_count,
+        "total_cost_usd": round(result[0].get("total_cost_usd", 0.0), 4) if result else 0.0,
+        "total_tokens": result[0].get("total_tokens", 0) if result else 0,
+        "total_processing_time_ms": result[0].get("total_processing_time_ms", 0) if result else 0
+    }

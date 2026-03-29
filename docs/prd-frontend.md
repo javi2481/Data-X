@@ -79,11 +79,11 @@ El frontend deja de parecer una app para CSV con soporte PDF y pasa a parecer un
 
 ## Estrategia de Construcción (Post-Backend)
 
-Una vez que el backend esté 100% sólido y todas las fases estén completadas, la construcción del frontend se acelerará utilizando una plataforma **"design-to-code"** como [Lovable.dev](https://lovable.dev).
+Una vez que el backend está 100% sólido, la construcción del frontend se acelerará utilizando agentes y plataformas AI como **Lovable.dev** o **Emergent.sh**.
 
-### ¿Qué es Lovable?
+### Herramientas AI
 
-Lovable es una plataforma que genera componentes de React/Next.js listos para producción directamente desde un archivo de diseño de Figma. No es un simple exportador; entiende la estructura de componentes, props, variantes y estados.
+**Lovable** es una plataforma que genera componentes de React/Next.js listos para producción a partir de prompts o diseños de Figma con un enfoque puramente visual. **Emergent** es un agente autónomo de software que puede orquestar la integración de esos componentes, manejar el estado global (Zustand) y conectar la lógica compleja en Next.js.
 
 ### ¿Por qué este enfoque?
 

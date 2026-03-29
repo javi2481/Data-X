@@ -11,6 +11,12 @@ services:
       - mongodb
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
   mongodb:
     image: mongo:7
     ports:

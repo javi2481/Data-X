@@ -4,6 +4,7 @@ import {
   AnalyzeResponse, 
   ErrorResponse,
   SessionListItem,
+  PaginatedSessions,
   UserCreate,
   UserLogin,
   TokenResponse,
@@ -130,20 +131,26 @@ export const api = {
     return handleResponse<AnalyzeResponse>(res);
   },
 
-  async listSessions(limit: number = 20, offset: number = 0): Promise<SessionListItem[]> {
+  async listSessions(limit: number = 20, offset: number = 0): Promise<PaginatedSessions> {
     const res = await fetch(`${API_BASE_URL}/api/sessions?limit=${limit}&offset=${offset}`, {
       headers: { ...getAuthHeaders() },
     });
-    const sessions = await handleResponse<SessionResponse[]>(res);
     
-    return sessions.map(s => ({
-      session_id: s.session_id,
-      status: s.status,
-      filename: (s.source_metadata.filename as string) || 'Archivo desconocido',
-      created_at: s.created_at,
-      finding_count: s.finding_count || 0,
-      quality_decision: s.quality_decision || 'unknown'
-    }));
+    const data = await handleResponse<{items: SessionResponse[], total: number, limit: number, offset: number}>(res);
+    
+    return {
+      items: data.items.map(s => ({
+        session_id: s.session_id,
+        status: s.status,
+        filename: (s.source_metadata.filename as string) || 'Archivo desconocido',
+        created_at: s.created_at,
+        finding_count: s.finding_count || 0,
+        quality_decision: s.quality_decision || 'unknown'
+      })),
+      total: data.total,
+      limit: data.limit,
+      offset: data.offset
+    };
   },
 
   async getSuggestedQuestions(sessionId: string, maxQuestions: number = 8): Promise<{

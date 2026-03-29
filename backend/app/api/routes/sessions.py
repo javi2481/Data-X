@@ -1,8 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime
 import uuid
+import io
+import csv
 from typing import Any, List
+from pydantic import BaseModel
 
 from app.schemas.session import SessionResponse
 from app.schemas.analyze import ErrorResponse
@@ -25,8 +28,20 @@ from app.repositories.mongo import session_repo
 from app.api.dependencies import get_current_user
 from fastapi import Depends
 from app.core.rate_limit import limiter
+from app.services.job_queue import JobQueueService
+import tempfile
+import os
 
 router = APIRouter()
+
+class CompareRequest(BaseModel):
+    target_session_id: str
+
+class PaginatedSessionList(BaseModel):
+    items: List[SessionResponse]
+    total: int
+    limit: int
+    offset: int
 
 ingest_service = IngestService()
 normalization_service = NormalizationService()
@@ -41,6 +56,7 @@ stat_tests_service = StatisticalTestsService()
 chunking_service = DocumentChunkingService()  # Legacy fallback
 docling_chunking_service = get_docling_chunking_service()  # Sprint 1: HybridChunker
 distributed_ingestion_service = DistributedIngestionService()
+job_queue_service = JobQueueService()
 
 def get_ingestion_strategy(current_user: dict) -> Any:
     """
@@ -134,277 +150,40 @@ async def create_session(
                 content={"error_code": "INVALID_FILE", "message": "El archivo está vacío (0 bytes)"}
             )
 
-        # 1. BRONZE: Ingesta (Docling/Fallback) con timeout de 60s
-        import asyncio
-        import time
-        start_time = time.time()
-        
-        ingestion_strategy = get_ingestion_strategy(current_user)
-        
-        try:
-            ingest_result = await asyncio.wait_for(
-                ingestion_strategy.ingest_file(
-                    file_bytes=content,
-                    filename=file.filename,
-                    content_type=file.content_type or "text/csv",
-                    table_index=table_index,
-                ),
-                timeout=60.0
-            )
-        except asyncio.TimeoutError:
-            return JSONResponse(
-                status_code=400,
-                content={"error_code": "PROCESSING_TIMEOUT", "message": "Archivo demasiado grande o complejo para procesar (timeout 60s)"}
-            )
-        
-        df = ingest_result["dataframe"]
-        
-        # Validar que el DataFrame no esté vacío
-        if df.empty or len(df.columns) == 0:
-            return JSONResponse(
-                status_code=400,
-                content={"error_code": "INVALID_FILE", "message": "El archivo no contiene datos válidos o columnas legibles"}
-            )
-        source_metadata = ingest_result["source_metadata"]
-        conversion_metadata = ingest_result["conversion_metadata"]
-        
-        # Quality Gate
-        gate_result = quality_gate.evaluate(conversion_metadata)
+        # Guardar archivo en disco temporal para que el worker de ARQ lo levante en background
+        ext = os.path.splitext(file.filename)[1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
         
         session_id = f"sess_{uuid.uuid4()}"
         ingested_at = datetime.utcnow()
 
-        bronze_record = BronzeRecord(
-            session_id=session_id,
-            original_filename=file.filename,
-            content_type=file.content_type or "text/csv",
-            size_bytes=len(content),
-            ingestion_source=conversion_metadata["method"],
-            quality_decision=gate_result["status"],
-            quality_scores=gate_result.get("scores", {}),
-            quality_baseline=gate_result.get("baseline", {}),
-            schema_version=conversion_metadata.get("schema_version", "legacy_v1"),
-            source_metadata=source_metadata,
-            tables_found=conversion_metadata.get("tables_found", 1),
-            selected_table_index=conversion_metadata.get("selected_table", 0),
-            narrative_context=conversion_metadata.get("narrative_context"),
-            table_confidence=conversion_metadata.get("confidence"),
-            document_payload=conversion_metadata.get("document_payload"),
-            document_metadata=conversion_metadata.get("document_metadata", {}),
-            tables=conversion_metadata.get("tables", []),
-            provenance_refs=conversion_metadata.get("provenance_refs", []),
-            ingested_at=ingested_at
-        )
-        
-        await session_repo.save_bronze(bronze_record.model_dump())
-
-        if gate_result["status"] == "reject":
-            session_data = {
-                "session_id": session_id,
-                "user_id": current_user["sub"],
-                "status": "error",
-                "created_at": ingested_at.isoformat(),
-                "source_metadata": source_metadata,
-                "quality_decision": gate_result["status"],
-                "finding_count": 0,
-                "contract_version": "v1",
-            }
-            await session_repo.create_session(session_data.copy())
-            session_data.pop("_id", None)
-            return JSONResponse(
-                status_code=200,
-                content={
-                    **session_data,
-                    "warnings": gate_result.get("warnings", []),
-                    "message": "Documento rechazado por quality gate; no se ejecutó análisis Silver/Gold.",
-                },
-            )
-
-        # 2. SILVER: Normalización + Perfilado + EDA Extendido + Findings + Charts
-        # Normalización
-        df = normalization_service.normalize(df)
-        
-        # Perfilado
-        profile_data = profiler_service.profile(df)
-        
-        # Validación de esquema (Corte 3)
-        schema_results = schema_validator.validate_and_report(df)
-        
-        # EDA Extendido (Corte 2)
-        eda_results = {
-            "correlations": eda_service.compute_correlations(df),
-            "outliers": eda_service.detect_all_outliers(df),
-            "distributions": eda_service.analyze_distributions(df)
-        }
-        
-        column_profiles = []
-        for col_name, col_data in profile_data.items():
-            column_profiles.append(ColumnProfile(
-                name=col_name,
-                dtype=col_data.get("dtype", "unknown"),
-                count=col_data.get("count", 0),
-                null_count=col_data.get("null_count", 0),
-                null_percent=col_data.get("null_percent", 0.0),
-                unique_count=col_data.get("unique_count", 0),
-                cardinality=col_data.get("cardinality", 0.0),
-                min=col_data.get("min"),
-                max=col_data.get("max"),
-                mean=col_data.get("mean"),
-                median=col_data.get("median"),
-                std=col_data.get("std"),
-                top_values=col_data.get("top_values")
-            ))
-
-        overview = DatasetOverview(
-            row_count=len(df),
-            column_count=len(df.columns),
-            numeric_columns=len(df.select_dtypes(include=['number']).columns),
-            categorical_columns=len(df.select_dtypes(include=['object', 'category']).columns),
-            datetime_columns=len(df.select_dtypes(include=['datetime']).columns),
-            total_nulls=int(df.isnull().sum().sum()),
-            total_null_percent=float(df.isnull().sum().sum() / (len(df) * len(df.columns))) if len(df) > 0 else 0.0,
-            duplicate_rows=int(df.duplicated().sum()),
-            duplicate_percent=float(df.duplicated().sum() / len(df)) if len(df) > 0 else 0.0
-        )
-
-        # Tests Estadísticos (Corte 4)
-        test_results = stat_tests_service.run_all_tests(df)
-
-        # Findings (ACTUALIZADO para Corte 4)
-        findings = finding_builder.build_all_findings(
-            df, 
-            eda_results=eda_results, 
-            schema_results=schema_results,
-            test_results=test_results
-        )
-        
-        # Charts (ACTUALIZADO para Corte 2)
-        charts = chart_spec_generator.generate_all_charts(df, findings, eda_results=eda_results)
-
-        # Preview de datos (usar helper de serialización segura)
-        from app.core.serialization import clean_data_for_json
-        data_preview = clean_data_for_json(df.head(50))
-
-        silver_record = SilverRecord(
-            session_id=session_id,
-            dataset_overview=overview,
-            column_profiles=column_profiles,
-            findings=[f.model_dump() for f in findings],
-            chart_specs=[c.model_dump() for c in charts],
-            data_preview=data_preview,
-            processed_at=datetime.utcnow()
-        )
-        
-        await session_repo.save_silver(silver_record.model_dump())
-
-        # 2.5 Chunks documentales + índice híbrido (Sprint 1: HybridChunker cuando disponible)
-        # Usar DoclingChunkingService (HybridChunker) si hay document_payload
-        if bronze_record.document_payload:
-            document_chunks = docling_chunking_service.build_chunks(
-                session_id=session_id,
-                document_payload=bronze_record.document_payload,
-                narrative_context=bronze_record.narrative_context,
-                tables=[t.model_dump() if hasattr(t, "model_dump") else t for t in bronze_record.tables],
-            )
-        else:
-            # Fallback a chunking legacy para archivos sin document_payload (CSV)
-            document_chunks = chunking_service.build_chunks(
-                session_id=session_id,
-                narrative_context=bronze_record.narrative_context,
-                tables=[t.model_dump() if hasattr(t, "model_dump") else t for t in bronze_record.tables],
-                document_payload=None,
-            )
-        chunks_saved = await session_repo.save_document_chunks(session_id, document_chunks)
-
-        hybrid_embedding_service = EmbeddingService()
-        await hybrid_embedding_service.index_hybrid_sources(
-            findings=[f.model_dump() for f in findings],
-            chunks=document_chunks,
-        )
-        await session_repo.save_hybrid_embeddings_cache(
-            {
-                "session_id": session_id,
-                "faiss_index": hybrid_embedding_service.serialize_index(),
-                "source_map": hybrid_embedding_service.source_map,
-                "source_ids": hybrid_embedding_service.source_ids,
-                "model_name": hybrid_embedding_service.model_name,
-                "created_at": datetime.now(),
-                "stats": {
-                    "chunks_indexed": chunks_saved,
-                    "findings_indexed": len(findings),
-                    "total_indexed": len(hybrid_embedding_service.source_ids),
-                },
-            }
-        )
-
-        # 3. GOLD (Corte 4): Summary + Enriched Explanations with costs
-        if llm_service.router:
-            report_data_for_llm = {
-                "original_filename": file.filename,
-                "row_count": len(df),
-                "column_count": len(df.columns),
-                "narrative_context": bronze_record.narrative_context,
-                "dataset_overview": overview.model_dump(),
-                "findings": [f.model_dump() for f in findings],
-                "column_profiles": [cp.model_dump() for cp in column_profiles]
-            }
-            
-            summary_result = await llm_service.generate_executive_summary(report_data_for_llm)
-            
-            total_cost = summary_result.get("cost_usd", 0.0)
-            calls_count = 1
-            model_used = summary_result.get("model", "")
-            
-            enriched_explanations = {}
-            # Enriquecer solo los más críticos para ahorrar tokens
-            for f in findings:
-                if f.severity in ["critical", "important"]:
-                    enriched = await llm_service.generate_enriched_explanation(f, report_data_for_llm)
-                    if enriched.get("explanation"):
-                        enriched_explanations[f.finding_id] = enriched["explanation"]
-                        total_cost += enriched.get("cost_usd", 0.0)
-                        calls_count += 1
-                        model_used = enriched.get("model", model_used)
-            
-            # Generar recomendaciones dinámicas
-            recommendations = await llm_service.generate_recommendations(findings)
-            
-            gold_record = GoldRecord(
-                session_id=session_id,
-                executive_summary=summary_result.get("summary", ""),
-                enriched_explanations=enriched_explanations,
-                recommendations=recommendations,
-                llm_cost_usd=total_cost,
-                llm_model_used=model_used,
-                llm_calls_count=calls_count,
-                generated_at=datetime.utcnow()
-            )
-            await session_repo.save_gold(gold_record.model_dump())
-
-        # 4. Sesión principal
-        duration = time.time() - start_time
-        from app.core.logging import get_logger
-        struct_logger = get_logger(__name__)
-        struct_logger.info("session_processing_complete", session_id=session_id, duration_sec=round(duration, 2))
-
+        # Crear la sesión inicial en estado "queued"
         session_data = {
             "session_id": session_id,
             "user_id": current_user["sub"],
-            "status": "ready" if gate_result["status"] != "reject" else "error",
+            "status": "queued",
             "created_at": ingested_at.isoformat(),
-            "source_metadata": source_metadata,
-            "quality_decision": gate_result["status"],
-            "dataset_overview": overview.model_dump(),
-            "finding_count": len(findings),
-            "document_chunks_count": chunks_saved,
+            "source_metadata": {
+                "filename": file.filename,
+                "content_type": content_type,
+                "size_bytes": len(content)
+            },
             "contract_version": "v1"
         }
         await session_repo.create_session(session_data.copy())
         
-        # Eliminar _id si se agregó durante el guardado
+        # Encolar el trabajo en Redis vía ARQ
+        await job_queue_service.enqueue_pipeline_job(
+            session_id=session_id,
+            file_path=tmp_path,
+            filename=file.filename,
+            content_type=content_type
+        )
+
         session_data.pop("_id", None)
-        
-        return JSONResponse(status_code=200, content=session_data)
+        return JSONResponse(status_code=202, content=session_data)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -414,9 +193,9 @@ async def create_session(
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @router.get("", 
-    response_model=List[SessionResponse],
+    response_model=PaginatedSessionList,
     summary="Listar historial de sesiones",
-    description="Devuelve una lista paginada de todas las sesiones realizadas ordenadas por fecha."
+    description="Devuelve una lista paginada enriquecida de todas las sesiones realizadas ordenadas por fecha."
 )
 @limiter.limit("100/minute")
 async def list_sessions(
@@ -425,12 +204,19 @@ async def list_sessions(
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user)
 ):
+    user_id = current_user["sub"]
+    total = await session_repo.count_sessions_by_user(user_id)
     sessions = await session_repo.list_sessions_by_user(
-        user_id=current_user["sub"],
+        user_id=user_id,
         limit=limit, 
         offset=offset
     )
-    return [SessionResponse(**s) for s in sessions]
+    return {
+        "items": [SessionResponse(**s) for s in sessions],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
 
 @router.get("/{session_id}", 
     response_model=SessionResponse,
@@ -455,3 +241,159 @@ async def get_session(
         )
         
     return SessionResponse(**session)
+
+@router.get("/{session_id}/status",
+    summary="Obtener el estado de procesamiento",
+    description="Endpoint ligero diseñado específicamente para hacer polling desde el frontend mientras la sesión se procesa en background."
+)
+async def get_session_status(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    session = await session_repo.get_session(session_id)
+    if not session:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
+        )
+    
+    if session.get("user_id") != current_user["sub"]:
+        return JSONResponse(
+            status_code=403,
+            content={"error_code": "ACCESS_DENIED", "message": "No tienes permiso para acceder a esta sesión"}
+        )
+        
+    return {
+        "session_id": session.get("session_id"),
+        "status": session.get("status", "unknown"),
+        "progress_message": session.get("progress_message", ""),
+        "quality_decision": session.get("quality_decision")
+    }
+
+@router.delete("/{session_id}",
+    summary="Eliminar sesión y sus datos (GDPR)",
+    description="Borra permanentemente la sesión, el documento original, metadatos, hallazgos y vectores asociados."
+)
+async def delete_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    session = await session_repo.get_session(session_id)
+    if not session:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión solicitada no existe"}
+        )
+    
+    if session.get("user_id") != current_user["sub"]:
+        return JSONResponse(
+            status_code=403,
+            content={"error_code": "ACCESS_DENIED", "message": "No tienes permiso para eliminar esta sesión"}
+        )
+        
+    await session_repo.delete_session_data(session_id)
+    
+    import structlog
+    structlog.get_logger(__name__).info("session_deleted", session_id=session_id, user_id=current_user["sub"])
+    
+    return JSONResponse(
+        status_code=200,
+        content={"message": "Sesión y datos asociados eliminados correctamente"}
+    )
+
+@router.get("/{session_id}/export",
+    summary="Exportar resultados del análisis",
+    description="Descarga los hallazgos (findings) de la sesión en un archivo estructurado CSV."
+)
+async def export_session_results(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    session = await session_repo.get_session(session_id)
+    if not session:
+        return JSONResponse(status_code=404, content={"error_code": "SESSION_NOT_FOUND", "message": "La sesión no existe"})
+        
+    if session.get("user_id") != current_user["sub"]:
+        return JSONResponse(status_code=403, content={"error_code": "ACCESS_DENIED", "message": "No tienes permiso"})
+        
+    silver = await session_repo.get_silver(session_id)
+    if not silver:
+        return JSONResponse(status_code=400, content={"error_code": "NO_DATA", "message": "El análisis aún no ha terminado o no hay datos."})
+        
+    findings = silver.get("findings", [])
+    
+    # Generar CSV en memoria
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Escribir Headers
+    writer.writerow(["ID", "Categoria", "Severidad", "Titulo", "Que encontramos", "Por que importa", "Recomendacion", "Columnas Afectadas"])
+    
+    # Escribir Filas
+    for f in findings:
+        writer.writerow([
+            f.get("finding_id", ""),
+            f.get("category", ""),
+            f.get("severity", ""),
+            f.get("title", ""),
+            f.get("what", ""),
+            f.get("so_what", ""),
+            f.get("now_what", ""),
+            ", ".join(f.get("affected_columns", []))
+        ])
+        
+    output.seek(0)
+    filename = session.get("source_metadata", {}).get("filename", "analisis").replace(" ", "_")
+    safe_filename = f"data_x_export_{filename}.csv"
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={safe_filename}"}
+    )
+
+@router.post("/{session_id}/compare",
+    summary="Comparar sesiones (Data Drift)",
+    description="Compara el perfil estadístico y los hallazgos de la sesión actual contra una sesión base histórica."
+)
+async def compare_sessions(
+    session_id: str,
+    body: CompareRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    session_a = await session_repo.get_session(session_id)
+    session_b = await session_repo.get_session(body.target_session_id)
+    
+    if not session_a or not session_b:
+        return JSONResponse(status_code=404, content={"error_code": "SESSION_NOT_FOUND", "message": "Una o ambas sesiones no existen"})
+        
+    if session_a.get("user_id") != current_user["sub"] or session_b.get("user_id") != current_user["sub"]:
+        return JSONResponse(status_code=403, content={"error_code": "ACCESS_DENIED", "message": "No tienes permiso"})
+        
+    silver_a = await session_repo.get_silver(session_id) or {}
+    silver_b = await session_repo.get_silver(body.target_session_id) or {}
+    
+    overview_a = silver_a.get("dataset_overview", {})
+    overview_b = silver_b.get("dataset_overview", {})
+    
+    findings_a = {f["finding_id"]: f for f in silver_a.get("findings", [])}
+    findings_b = {f["finding_id"]: f for f in silver_b.get("findings", [])}
+    
+    # Extraer diferencias clave (Nuevos riesgos vs riesgos resueltos)
+    new_findings = [f for fid, f in findings_a.items() if fid not in findings_b]
+    resolved_findings = [f for fid, f in findings_b.items() if fid not in findings_a]
+    
+    return {
+        "session_current": session_id,
+        "session_baseline": body.target_session_id,
+        "overview_diff": {
+            "row_count_change": overview_a.get("row_count", 0) - overview_b.get("row_count", 0),
+            "null_percent_change": round(overview_a.get("total_null_percent", 0.0) - overview_b.get("total_null_percent", 0.0), 4),
+        },
+        "findings_diff": {
+            "new_findings_count": len(new_findings),
+            "resolved_findings_count": len(resolved_findings),
+            "new_findings": new_findings,
+            "resolved_findings": resolved_findings
+        }
+    }

@@ -1,3 +1,7 @@
+import os
+# Debe setearse ANTES de que config.py instancie Settings()
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only-not-for-production")
+
 import pytest
 import pandas as pd
 from fastapi.testclient import TestClient

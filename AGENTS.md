@@ -22,8 +22,8 @@
 
 | Agent | Can Write | Can Read | Notes |
 |-------|-----------|----------|-------|
-| **Emergent** | `backend/` only | Everything | Backend API, services, data pipeline |
-| **v0** | `frontend/` only | Everything | UI components, pages, styling |
+| **Emergent** | `backend/` (and `frontend/`) | Everything | Backend API, data pipeline, and autonomous full-stack features |
+| **Lovable / v0** | `frontend/` only | Everything | UI components, pages, styling, design-to-code |
 | **All agents** | Nothing | `docs/` | Docs are read-only unless explicitly instructed |
 
 **Cross-writing is FORBIDDEN.** Never modify files outside your scope.

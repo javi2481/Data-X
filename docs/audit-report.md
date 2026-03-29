@@ -209,8 +209,9 @@ Tiempo de ejecución: 189 segundos. La duración larga se debe a `test_profiler_
 | **Fase 8 (FraudGuard)** | 100% | `fraud_guard.py`, `pdf_forensics.py`, validación ELA, Ley de Benford, y validación fiscal implementados e integrados asíncronamente. |
 | **Fase 9 (Advanced Forensics)** | 0% | Firmas manuscritas (DETR/Apache 2.0), sellos, DTE Chile, PhotoHolmes GPU |
 
-**Notas sobre Fase 10 (Multi-Tier):**
-A punto de iniciar. Consiste en abstraer el Retrieval y la Ingestión mediante Patrón Strategy.
+**Fase 10 (Multi-Tier Strategy)**: 100% — Interfaces base `BaseRetrievalService` y `BaseIngestionOrchestrator` implementadas, con inyección dinámica lista para OpenSearch.
+
+**Fase 11 (Endpoints B2B y Ciclo de vida)**: 100% — Pipeline asíncrono en `POST /sessions`, exportación, polling, Data Drift y tracking de facturación B2B terminados.
 
 **Notas sobre Fase 2 (85%):**
 - Completados: Pasos 1-11 (ProfilingSummary schema, SensitiveDataGuard, profiler refactor, tests profiler, integración pipeline, FindingBuilder consume ProfilingSummary, ContextBuilder, integración LLM, FileMetadata, DoclingRouter + backends, integración ingest)
@@ -240,7 +241,7 @@ A punto de iniciar. Consiste en abstraer el Retrieval y la Ingestión mediante P
 ### 5.1 Código y Arquitectura
 
 **[RESUELTO] Problema 1: pingouin (GPL-3.0) en producción — impacto CRÍTICO**
-- `statistical_tests.py` importa `pingouin` directamente en línea 1
+- `statistical_tests.py` usa 100% `scipy.stats` (shapiro, ttest_ind, f_oneway).
 - `pyproject.toml` lista `pingouin>=0.5.3` como dependencia principal (no dev)
 - `roadmap.md` dice explícitamente "Pingouin (power analysis): GPL-3.0 — descalificada para uso comercial"
 - El propio roadmap lista "Sustituir pingouin por SciPy/Statsmodels" como primera tarea pendiente
@@ -328,9 +329,7 @@ A punto de iniciar. Consiste en abstraer el Retrieval y la Ingestión mediante P
 - Impacto: bajo-medio. Esfuerzo: bajo
 
 **`jwt_secret_key` tiene default vacío:**
-- `config.py`: `jwt_secret_key: str = ""`
-- Si no se configura la variable, todos los tokens son firmados con string vacío
-- Impacto: crítico si se despliega sin configurar. Esfuerzo: mínimo (cambiar default a `secrets.token_hex(32)` o validar en startup)
+**[RESUELTO]**: `main.py` lanza RuntimeError en el lifespan si el JWT_SECRET_KEY no está provisto en entorno de producción.
 
 **MongoDB inyección: no hay riesgo visible:**
 - Las queries usan dicts Python con PyMongo — no hay interpolación de strings en queries

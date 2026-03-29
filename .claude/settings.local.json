@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(winget upgrade:*)",
@@ -17,7 +20,14 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docling-project.github.io)",
       "Bash(\\\\ git:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(python -c \"import pydantic_ai; print\\(pydantic_ai.__version__\\)\")",
+      "Bash(python -c \"from pydantic_ai.models.openai import OpenAIModel; help\\(OpenAIModel.__init__\\)\")",
+      "Bash(python -c \"from pydantic_ai.providers.openai import OpenAIProvider; help\\(OpenAIProvider.__init__\\)\")",
+      "Bash(pip show:*)",
+      "Bash(grep -i \"pymongo\\\\|opentelemetry\" requirements*.txt)",
+      "Bash(pip install:*)"
     ]
   }
 }

@@ -1,9 +1,5 @@
-import pingouin as pg
 import pandas as pd
-import warnings
-
-# Ignorar FutureWarnings de pingouin por compatibilidad con pandas 3.x
-warnings.filterwarnings("ignore", category=FutureWarning, module="pingouin")
+from scipy.stats import shapiro, ttest_ind, f_oneway
 
 class StatisticalTestsService:
     
@@ -14,9 +10,10 @@ class StatisticalTestsService:
             if len(data) < 8 or len(data) > 5000:
                 return {"column": column, "test": "shapiro", "skipped": True,
                         "reason": "Requiere entre 8 y 5000 datos"}
-            result = pg.normality(data)
-            is_normal = bool(result['normal'].values[0])
-            p_value = float(result['pval'].values[0])
+            
+            stat, p_value = shapiro(data)
+            is_normal = bool(p_value >= 0.05)
+            
             return {
                 "column": column,
                 "test": "shapiro",
@@ -36,46 +33,53 @@ class StatisticalTestsService:
             if groups < 2 or groups > 20:
                 return None
             
+            # Filtrar nulos
+            df_clean = df.dropna(subset=[group_col, numeric_col])
+            
             if groups == 2:
-                # Filtrar nulos antes de comparar
-                g1 = df[df[group_col] == df[group_col].unique()[0]][numeric_col].dropna()
-                g2 = df[df[group_col] == df[group_col].unique()[1]][numeric_col].dropna()
+                unique_vals = df_clean[group_col].unique()
+                g1 = df_clean[df_clean[group_col] == unique_vals[0]][numeric_col]
+                g2 = df_clean[df_clean[group_col] == unique_vals[1]][numeric_col]
                 
                 if len(g1) < 2 or len(g2) < 2:
                     return None
                     
-                result = pg.ttest(g1, g2)
-                # En algunas versiones de pingouin el p-valor es 'p-val', en otras 'p_val', 'p-unc', etc.
-                p_val = None
-                for col in ['p-val', 'p_val', 'p-unc', 'p_unc', 'pval', 'p']:
-                    if col in result.columns:
-                        p_val = float(result[col].values[0])
-                        break
+                # Usamos Welch's t-test (equal_var=False) equivalente al default de pingouin
+                stat, p_val = ttest_ind(g1, g2, equal_var=False)
                 
-                if p_val is None:
+                if pd.isna(p_val):
                     return None
                     
-                significant = p_val < 0.05
+                significant = bool(p_val < 0.05)
                 return {
                     "test": "t-test",
                     "numeric_column": numeric_col,
                     "group_column": group_col,
-                    "p_value": round(p_val, 4),
+                    "p_value": round(float(p_val), 4),
                     "significant": significant,
                     "interpretation": f"Hay diferencias significativas en '{numeric_col}' entre los grupos de '{group_col}'"
                         if significant else
                         f"No hay diferencias significativas en '{numeric_col}' entre los grupos de '{group_col}'"
                 }
             else:
-                result = pg.anova(data=df, dv=numeric_col, between=group_col)
-                p_val = float(result['p-unc'].values[0])
-                significant = p_val < 0.05
+                groups_data = [df_clean[df_clean[group_col] == val][numeric_col] for val in df_clean[group_col].unique()]
+                groups_data = [g for g in groups_data if len(g) > 1]
+                
+                if len(groups_data) < 2:
+                    return None
+                    
+                stat, p_val = f_oneway(*groups_data)
+                
+                if pd.isna(p_val):
+                    return None
+                    
+                significant = bool(p_val < 0.05)
                 return {
                     "test": "anova",
                     "numeric_column": numeric_col,
                     "group_column": group_col,
                     "groups": groups,
-                    "p_value": round(p_val, 4),
+                    "p_value": round(float(p_val), 4),
                     "significant": significant,
                     "interpretation": f"Los {groups} grupos de '{group_col}' muestran diferencias significativas en '{numeric_col}'"
                         if significant else

@@ -535,6 +535,27 @@ Los detalles completos están en `docs/roadmap.md`. Los pasos de esta fase requi
 
 ---
 
+## Fase 10 y 11 — Multi-Tier Strategy y Endpoints de Gestión (COMPLETADAS)
+
+**Qué se hizo**:
+- Implementación del **Patrón Strategy** para Búsqueda (FAISS vs OpenSearch) e Ingesta (Docling Local vs IBM Data Prep Kit).
+- Creación de `BaseRetrievalService` y `BaseIngestionOrchestrator` con contratos estrictos.
+- Actualización de `POST /api/sessions` para procesar asincrónicamente mediante ARQ y retornar HTTP 202.
+- Implementación de endpoints de gestión: `GET /api/sessions/{id}/status` (Polling), `DELETE /api/sessions/{id}` (GDPR), `GET /api/sessions/{id}/export` (CSV) y `POST /api/sessions/{id}/compare` (Data Drift).
+- Paginación enriquecida en `GET /api/sessions` con conteo total.
+- Caché distribuido en Redis para respuestas del LLM (LiteLLM).
+- Eliminación de deuda técnica: limpieza de `pingouin`, archivos mal ubicados (`docs/base.py`), y `asyncio.sleep` artificial.
+
+---
+
+## Fase 12 — Frontend y Experiencia de Usuario (PRÓXIMO PASO)
+
+**Qué hacer**:
+- Configurar **Zustand** para la gestión del estado global de la sesión.
+- Migrar JWT de `localStorage` a cookies `httpOnly` mediante API Routes de Next.js (BFF).
+- Construir UI para consumir reportes avanzados (FraudGuard, Data Drift, Costos).
+- Integrar herramientas de generación de UI (Lovable/Emergent) basadas en los contratos de `types/contracts.ts`.
+
 ## Fase Final — Deploy y Producción
 
 **Nota**: Esta fase no se toca hasta completar, integrar y testear localmente todas las features de las Fases 2 a 9.

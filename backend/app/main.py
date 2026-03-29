@@ -14,6 +14,10 @@ import uuid
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Hardening de Seguridad: Prevenir arranque vulnerable
+    if not settings.jwt_secret_key:
+        raise RuntimeError("🚨 SEGURIDAD CRÍTICA: JWT_SECRET_KEY no está configurado. Abortando inicio.")
+        
     # Startup
     setup_telemetry(app)
     await db.connect_to_db()

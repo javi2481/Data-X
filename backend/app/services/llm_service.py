@@ -3,12 +3,15 @@ from litellm import Router, completion_cost
 from app.core.config import settings
 import structlog
 import json
+import os
 from typing import Optional, Any
 
 logger = structlog.get_logger(__name__)
 
-# Configurar cache local
-litellm.cache = litellm.Cache(type="local")
+# Configurar cache distribuido en Redis
+redis_host = os.environ.get("REDIS_HOST", "localhost")
+redis_port = os.environ.get("REDIS_PORT", "6379")
+litellm.cache = litellm.Cache(type="redis", host=redis_host, port=redis_port)
 
 class LLMService:
     def __init__(self):

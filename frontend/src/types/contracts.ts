@@ -216,6 +216,13 @@ export interface SessionListItem {
   quality_decision: string;
 }
 
+export interface PaginatedSessions {
+  items: SessionListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface ErrorResponse {
   error_code: string;
   message: string;

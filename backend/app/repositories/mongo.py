@@ -102,6 +102,12 @@ class SessionRepository:
         cursor = self.sessions.find({"user_id": user_id}).sort("created_at", -1).skip(offset).limit(limit)
         return await cursor.to_list(length=limit)
 
+    async def count_sessions_by_user(self, user_id: str) -> int:
+        """
+        Cuenta el total de sesiones de un usuario específico para la paginación.
+        """
+        return await self.sessions.count_documents({"user_id": user_id})
+
     async def save_embeddings_cache(self, cache_data: dict[str, Any]) -> str:
         """
         Guarda o actualiza el caché de embeddings de una sesión.
@@ -136,5 +142,19 @@ class SessionRepository:
     async def get_document_chunks(self, session_id: str) -> list[dict[str, Any]]:
         cursor = self.document_chunks.find({"session_id": session_id}).sort("chunk_order", 1)
         return await cursor.to_list(length=10000)
+
+    async def delete_session_data(self, session_id: str) -> bool:
+        """
+        Borrado seguro (GDPR): Elimina todos los datos asociados a una sesión de todas las colecciones.
+        """
+        await self.sessions.delete_one({"session_id": session_id})
+        await self.bronze.delete_many({"session_id": session_id})
+        await self.silver.delete_many({"session_id": session_id})
+        await self.gold.delete_many({"session_id": session_id})
+        await self.embeddings_cache.delete_many({"session_id": session_id})
+        await self.hybrid_embeddings_cache.delete_many({"session_id": session_id})
+        await self.document_chunks.delete_many({"session_id": session_id})
+        await self.db.usage_events.delete_many({"session_id": session_id})
+        return True
 
 session_repo = SessionRepository()

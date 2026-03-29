@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, List, Dict
 
 
 class BaseRetrievalService(ABC):
@@ -14,4 +14,12 @@ class BaseRetrievalService(ABC):
 
     @abstractmethod
     def search(self, query: str, top_k: int = 5) -> List[dict]:
+        ...
+
+    @abstractmethod
+    async def search_hybrid_sources(self, query: str, top_k: int = 8, **filters) -> List[Dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    async def index_hybrid_sources(self, findings: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> None:
         ...
