@@ -94,9 +94,17 @@ export function FileUploader({ onUploadComplete, onUploadError }: FileUploaderPr
     const toastId = toast.loading('Subiendo y procesando archivo...');
 
     try {
-      // Simular progreso inicial
+      // FE-002: Progreso simulado con límite de tiempo
+      const MAX_PROGRESS_TIME = 30000; // 30 segundos máximo para progreso simulado
+      const startTime = Date.now();
       const interval = setInterval(() => {
-        setProgress((prev) => (prev < 90 ? prev + 10 : prev));
+        const elapsed = Date.now() - startTime;
+        if (elapsed > MAX_PROGRESS_TIME) {
+          clearInterval(interval);
+          setProgress(90); // Máximo 90% hasta que complete la llamada real
+        } else {
+          setProgress((prev) => (prev < 90 ? prev + 10 : prev));
+        }
       }, 500);
 
       const data = await api.createSession(file);

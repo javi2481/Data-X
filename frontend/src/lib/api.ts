@@ -13,19 +13,20 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-const TOKEN_KEY = 'datax_token';
+// FE-001 Fix: No más localStorage para JWT (vulnerabilidad XSS)
+// El token ahora se maneja via httpOnly cookies desde el backend
 
 function getAuthHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  const token = localStorage.getItem(TOKEN_KEY);
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+  // Las cookies httpOnly se envían automáticamente con credentials: 'include'
+  return {};
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
+    // FE-001: Con httpOnly cookies, el backend maneja la expiración
+    // Solo redirigimos al login si es necesario
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY);
-      // Opcionalmente redirigir a login si estamos en el cliente
+      window.location.href = '/login';
     }
   }
 
@@ -49,12 +50,11 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // FE-001: Incluir cookies en requests
       body: JSON.stringify(data),
     });
     const result = await handleResponse<TokenResponse>(res);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, result.access_token);
-    }
+    // FE-001: El backend establece la cookie httpOnly automáticamente
     return result;
   },
 
@@ -62,31 +62,38 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // FE-001: Incluir cookies en requests
       body: JSON.stringify(data),
     });
     const result = await handleResponse<TokenResponse>(res);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, result.access_token);
-    }
+    // FE-001: El backend establece la cookie httpOnly automáticamente
     return result;
   },
 
   async getMe(): Promise<UserResponse> {
     const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: { ...getAuthHeaders() },
+      credentials: 'include', // FE-001: Cookies se envían automáticamente
     });
     return handleResponse<UserResponse>(res);
   },
 
-  logout() {
+  async logout() {
+    // FE-001: Llamar endpoint del backend que borre la cookie
+    const res = await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = '/login';
     }
+    return handleResponse(res);
   },
 
   isAuthenticated(): boolean {
-    if (typeof window === 'undefined') return false;
-    return !!localStorage.getItem(TOKEN_KEY);
+    // FE-001: Ya no podemos verificar desde el cliente con httpOnly cookies
+    // Esto debe manejarse via llamada al backend o state management
+    // Por ahora retornamos true (el backend validará)
+    return true;
   },
 
   async health() {
@@ -99,7 +106,7 @@ export const api = {
     formData.append('file', file);
     const res = await fetch(`${API_BASE_URL}/api/sessions`, {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
+      credentials: 'include', // FE-001: Incluir cookies
       body: formData,
     });
     return handleResponse<SessionResponse>(res);
@@ -107,14 +114,14 @@ export const api = {
 
   async getSession(sessionId: string): Promise<SessionResponse> {
     const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, {
-      headers: { ...getAuthHeaders() },
+      credentials: 'include', // FE-001: Incluir cookies
     });
     return handleResponse<SessionResponse>(res);
   },
 
   async getReport(sessionId: string): Promise<AnalysisReport> {
     const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/report`, {
-      headers: { ...getAuthHeaders() },
+      credentials: 'include', // FE-001: Incluir cookies
     });
     return handleResponse<AnalysisReport>(res);
   },
@@ -122,10 +129,8 @@ export const api = {
   async analyze(sessionId: string, query: string): Promise<AnalyzeResponse> {
     const res = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // FE-001: Incluir cookies
       body: JSON.stringify({ session_id: sessionId, query }),
     });
     return handleResponse<AnalyzeResponse>(res);
@@ -133,7 +138,7 @@ export const api = {
 
   async listSessions(limit: number = 20, offset: number = 0): Promise<PaginatedSessions> {
     const res = await fetch(`${API_BASE_URL}/api/sessions?limit=${limit}&offset=${offset}`, {
-      headers: { ...getAuthHeaders() },
+      credentials: 'include', // FE-001: Incluir cookies
     });
     
     const data = await handleResponse<{items: SessionResponse[], total: number, limit: number, offset: number}>(res);
@@ -171,7 +176,7 @@ export const api = {
     const res = await fetch(
       `${API_BASE_URL}/api/analyze/${sessionId}/suggested-questions?max_questions=${maxQuestions}`,
       {
-        headers: { ...getAuthHeaders() },
+        credentials: 'include', // FE-001: Incluir cookies
       }
     );
     return handleResponse(res);

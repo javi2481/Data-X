@@ -75,24 +75,47 @@ function WorkspaceContent() {
         setError({ title: 'Error en la sesión', desc: 'El procesamiento del archivo falló.' });
         setState('error');
       } else {
-        // Polling simple si está procesando
-        setTimeout(() => {
-          // Usamos la referencia a la función nombrada para evitar problemas de hoisting con const/useCallback
-          const poll = async () => {
-            try {
-              const d = await api.getSession(sid);
-              setSession(d);
-              if (d.status === 'ready') loadReport(sid);
-              else if (d.status === 'error') {
-                setError({ title: 'Error', desc: 'Fallo al procesar' });
-                setState('error');
-              } else setTimeout(poll, 2000);
-            } catch (e) {
-              console.error("Polling error", e);
+        // FE-002: Polling con límite y exponential backoff
+        const MAX_ATTEMPTS = 30; // Máximo 30 intentos
+        const BASE_DELAY = 2000; // 2 segundos inicial
+        const MAX_DELAY = 10000; // Máximo 10 segundos entre intentos
+        let attempts = 0;
+        
+        const poll = async () => {
+          attempts++;
+          
+          if (attempts > MAX_ATTEMPTS) {
+            setError({ 
+              title: 'Tiempo de espera agotado', 
+              desc: 'El procesamiento está tomando más tiempo del esperado. Intenta refrescar la página.' 
+            });
+            setState('error');
+            return;
+          }
+          
+          try {
+            const d = await api.getSession(sid);
+            setSession(d);
+            
+            if (d.status === 'ready') {
+              loadReport(sid);
+            } else if (d.status === 'error') {
+              setError({ title: 'Error', desc: 'Fallo al procesar' });
+              setState('error');
+            } else {
+              // Exponential backoff: 2s, 4s, 8s, hasta MAX_DELAY
+              const delay = Math.min(BASE_DELAY * Math.pow(1.5, attempts - 1), MAX_DELAY);
+              setTimeout(poll, delay);
             }
-          };
-          poll();
-        }, 2000);
+          } catch (e) {
+            console.error("Polling error", e);
+            // Si falla el request, reintentar con backoff
+            const delay = Math.min(BASE_DELAY * Math.pow(1.5, attempts - 1), MAX_DELAY);
+            setTimeout(poll, delay);
+          }
+        };
+        
+        setTimeout(poll, BASE_DELAY);
       }
     } catch {
       setError({ 
