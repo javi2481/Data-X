@@ -68,6 +68,16 @@ AUDIT_REPORT = {
                 "description": "Worker serializa y persiste el índice FAISS + source_map + source_ids en MongoDB al finalizar Silver. El endpoint /api/analyze carga el índice antes de construir AnalysisDeps. RAG ahora funcional en producción."
             },
             {
+                "bug_id": "BUG-004",
+                "title": "Redis cache de LiteLLM centralizado en settings",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/bug-004-litellm-cache-settings",
+                "files_changed": ["backend/app/services/llm_service.py"],
+                "lines_changed": 15,
+                "description": "Eliminado import os y las 3 líneas de módulo con os.environ. litellm.cache ahora se inicializa en __init__() usando settings.redis_host/port con degradación graceful si Redis no está disponible."
+            },
+            {
                 "bug_id": "ACT-004",
                 "title": "PipelineOrchestrator movido al contexto del worker ARQ + caché de modelos ML",
                 "status": "fixed",
@@ -181,6 +191,8 @@ AUDIT_REPORT = {
                     "id": "BUG-004",
                     "title": "Redis cache hardcodeado con os.environ en lugar de settings",
                     "severity": "critical",
+                    "status": "fixed",
+                    "fix_branch": "fix/bug-004-litellm-cache-settings",
                     "category": "security",
                     "file": "backend/app/services/llm_service.py",
                     "line_start": 10,
