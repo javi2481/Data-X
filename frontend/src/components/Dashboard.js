@@ -81,6 +81,59 @@ export default function Dashboard({ report, onSectionChange }) {
         <span>Líneas: <strong style={{color: '#e2e8f0'}}>{meta.stats.lines_analyzed.toLocaleString()}</strong></span>
       </div>
 
+      {/* Fixes Progress Panel */}
+      {report.meta.fixes_applied && report.meta.fixes_applied.length > 0 && (
+        <div style={{
+          background: 'var(--bg-card)',
+          border: '1px solid rgba(34,197,94,0.2)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid rgba(34,197,94,0.15)',
+            background: 'rgba(34,197,94,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>✅</span> Fixes Implementados
+            </div>
+            <span style={{
+              fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)',
+              color: '#22c55e', background: 'rgba(34,197,94,0.1)',
+              padding: '2px 8px', borderRadius: 9999, border: '1px solid rgba(34,197,94,0.3)'
+            }}>
+              {report.meta.fixes_applied.length} / {stats.critical} críticos
+            </span>
+          </div>
+          {report.meta.fixes_applied.map(fix => (
+            <div key={fix.bug_id} style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              padding: '12px 20px', borderBottom: '1px solid var(--border)',
+            }}>
+              <span style={{ fontSize: 16 }}>✅</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#22c55e', marginRight: 8 }}>{fix.bug_id}</span>
+                  {fix.title}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{fix.description}</div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: '#22c55e',
+                  background: 'rgba(34,197,94,0.1)', padding: '2px 8px',
+                  borderRadius: 4, border: '1px solid rgba(34,197,94,0.25)',
+                }}>FIXED</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+                  {fix.lines_changed} líneas · {fix.fix_date}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="stats-grid" data-testid="stats-grid">
         <div className="stat-card" onClick={() => onSectionChange('bugs')}>

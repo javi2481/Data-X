@@ -32,7 +32,42 @@ AUDIT_REPORT = {
             "low": 4,
             "files_analyzed": 28,
             "lines_analyzed": 3200
-        }
+        },
+        "fixes_applied": [
+            {
+                "bug_id": "BUG-001",
+                "title": "NameError: 'logger' no definido en analyze.py",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/bug-001-logger-nameerror-analyze",
+                "files_changed": ["backend/app/api/routes/analyze.py"],
+                "lines_changed": 4,
+                "description": "import structlog y logger = structlog.get_logger(__name__) movidos al nivel de módulo. Eliminados imports inline dentro de try/except."
+            },
+            {
+                "bug_id": "BUG-002",
+                "title": "AttributeError: 'self.db' en delete_session_data",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/bug-002-attributeerror-delete-session",
+                "files_changed": ["backend/app/repositories/mongo.py"],
+                "lines_changed": 2,
+                "description": "Reemplazado self.db.usage_events (inexistente) por db.db['usage_events'] con guard db.db is not None, consistente con el resto del repositorio."
+            },
+            {
+                "bug_id": "BUG-003",
+                "title": "EmbeddingService stateless: índice FAISS no persiste entre requests",
+                "status": "fixed",
+                "fix_date": "2026-03-29",
+                "branch": "fix/bug-003-persist-faiss-index",
+                "files_changed": [
+                    "backend/app/services/pipeline_orchestrator.py",
+                    "backend/app/api/routes/analyze.py"
+                ],
+                "lines_changed": 48,
+                "description": "Worker serializa y persiste el índice FAISS + source_map + source_ids en MongoDB al finalizar Silver. El endpoint /api/analyze carga el índice antes de construir AnalysisDeps. RAG ahora funcional en producción."
+            }
+        ]
     },
     "sections": [
         {
@@ -73,6 +108,8 @@ AUDIT_REPORT = {
                     "id": "BUG-001",
                     "title": "NameError en producción: 'logger' no definido en analyze.py",
                     "severity": "critical",
+                    "status": "fixed",
+                    "fix_branch": "fix/bug-001-logger-nameerror-analyze",
                     "category": "bug",
                     "file": "backend/app/api/routes/analyze.py",
                     "line_start": 30,
@@ -91,6 +128,8 @@ AUDIT_REPORT = {
                     "id": "BUG-002",
                     "title": "AttributeError: 'self.db' no existe en SessionRepository.delete_session_data",
                     "severity": "critical",
+                    "status": "fixed",
+                    "fix_branch": "fix/bug-002-attributeerror-delete-session",
                     "category": "bug",
                     "file": "backend/app/repositories/mongo.py",
                     "line_start": 115,
@@ -109,6 +148,8 @@ AUDIT_REPORT = {
                     "id": "BUG-003",
                     "title": "EmbeddingService stateless: índice FAISS no persiste entre requests",
                     "severity": "critical",
+                    "status": "fixed",
+                    "fix_branch": "fix/bug-003-persist-faiss-index",
                     "category": "bug",
                     "file": "backend/app/api/routes/analyze.py",
                     "line_start": 28,

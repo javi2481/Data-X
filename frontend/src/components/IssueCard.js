@@ -61,6 +61,15 @@ export default function IssueCard({ issue, defaultExpanded = false }) {
         <span className="issue-id">{issue.id}</span>
         <span className="issue-title">{issue.title}</span>
         <div className="issue-meta">
+          {issue.status === 'fixed' && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4,
+              background: 'rgba(34,197,94,0.1)', color: '#22c55e',
+              border: '1px solid rgba(34,197,94,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px'
+            }}>
+              ✓ Implementado
+            </span>
+          )}
           {issue.category && (
             <span style={{ fontSize: 11, color: '#64748b', padding: '2px 7px', background: 'rgba(255,255,255,0.04)', borderRadius: 4, border: '1px solid rgba(255,255,255,0.07)' }}>
               {categoryLabels[issue.category] || issue.category}
