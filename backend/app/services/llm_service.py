@@ -4,9 +4,13 @@ from app.core.config import settings
 from app.utils import to_dict
 import structlog
 import json
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
+import re
 
 logger = structlog.get_logger(__name__)
+
+# NXT-004: Anti-hallucination guardrails threshold
+HALLUCINATION_RISK_THRESHOLD = 0.5
 
 class LLMService:
     def __init__(self):
@@ -160,16 +164,17 @@ No uses jerga técnica. Sé directo y accionable."""
             logger.error("llm_summary_failed", error=str(e))
             return {"summary": "Error al generar resumen inteligente.", "cost_usd": 0.0}
 
-    async def answer_query(self, query: str, relevant_findings: list, context_sources: Optional[list[dict]] = None) -> dict:
+    async def answer_query(self, query: str, relevant_findings: list, context_sources: Optional[list[dict]] = None, available_source_map: Optional[Dict[str, Any]] = None) -> dict:
         """
         Responde preguntas usando contexto RAG (findings relevantes).
-        Retorna JSON estructurado.
+        Retorna JSON estructurado con guardrails anti-alucinación (NXT-004).
         """
         if not self.router:
             return {
                 "answer": "Servicio de IA no configurado.",
                 "confidence": "low",
                 "sources_used": [],
+                "hallucination_risk": 0.0,
                 "cost_usd": 0.0
             }
 
@@ -188,9 +193,16 @@ No uses jerga técnica. Sé directo y accionable."""
                     )
                 source_context = "\nFuentes documentales recuperadas:\n" + "\n".join(source_lines)
 
+            # NXT-004: Prompt mejorado con reglas estrictas anti-alucinación
             system_prompt = """Sos un analista de datos experto. Respondé basándote EXCLUSIVAMENTE
 en los hallazgos y fuentes documentales que te doy. No inventes datos.
 Si la pregunta no se puede responder con estas fuentes, decilo honestamente.
+
+REGLAS ESTRICTAS:
+1. SIEMPRE cita el source_id exacto de donde sacaste cada información.
+2. Si no tenés suficiente información, decí "No tengo suficiente información para responder."
+3. No hagas suposiciones ni generalizaciones sin evidencia directa.
+4. Si un número o estadística no aparece en las fuentes, NO lo inventes.
 
 Respondé SOLO con un objeto JSON con esta estructura exacta:
 {
@@ -221,20 +233,60 @@ Respondé SOLO con un objeto JSON con esta estructura exacta:
                     "answer": content,
                     "confidence": "medium",
                     "sources_used": [],
+                    "hallucination_risk": 0.5,  # Penalizar respuestas malformadas
+                    "warning": "La respuesta no pudo ser validada correctamente.",
                     "cost_usd": completion_cost(completion_response=response) or 0.0,
                     "model": getattr(response, "model", settings.litellm_model)
                 }
             
+            answer = structured_data.get("answer", content)
+            confidence = structured_data.get("confidence", "medium")
+            sources_used = structured_data.get("sources_used", [])
+            
+            # NXT-004: Calcular hallucination risk
+            source_map = available_source_map or {}
+            hallucination_risk = self._calculate_hallucination_risk(
+                confidence=confidence,
+                sources_used=sources_used,
+                answer=answer,
+                available_source_map=source_map
+            )
+            
+            # Si risk >= threshold, rechazar respuesta
+            warning = None
+            if hallucination_risk >= HALLUCINATION_RISK_THRESHOLD:
+                warning = "Esta respuesta tiene alta probabilidad de ser inexacta. Verifica los hallazgos manualmente."
+                logger.warning(
+                    "high_hallucination_risk",
+                    query=query[:50],
+                    risk=hallucination_risk,
+                    confidence=confidence,
+                    sources_count=len(sources_used)
+                )
+                # Reemplazar con respuesta genérica segura
+                answer = "No puedo responder con certeza basado en las fuentes disponibles. Por favor, revisa los hallazgos manualmente en el reporte."
+                confidence = "low"
+            elif hallucination_risk >= 0.3:
+                warning = "Esta respuesta tiene baja confianza. Verifica los hallazgos si necesitas mayor precisión."
+            
             return {
-                "answer": structured_data.get("answer", content),
-                "confidence": structured_data.get("confidence", "medium"),
-                "sources_used": structured_data.get("sources_used", []),
+                "answer": answer,
+                "confidence": confidence,
+                "sources_used": sources_used,
+                "hallucination_risk": hallucination_risk,
+                "warning": warning,
                 "cost_usd": completion_cost(completion_response=response) or 0.0,
                 "model": getattr(response, "model", settings.litellm_model)
             }
         except Exception as e:
             logger.error("llm_query_failed", error=str(e))
-            return {"answer": f"Error al procesar la consulta: {str(e)}", "cost_usd": 0.0}
+            return {
+                "answer": f"Error al procesar la consulta: {str(e)}",
+                "confidence": "low",
+                "hallucination_risk": 1.0,
+                "warning": "Error técnico al procesar la respuesta.",
+                "cost_usd": 0.0
+            }
 
     async def generate_recommendations(self, findings: list) -> dict:
         """
@@ -295,3 +347,78 @@ Respondé SOLO con la lista de recomendaciones, una por línea, empezando con un
                 "recommendations": ["Revisar los hallazgos detallados en el reporte."],
                 "cost_usd": 0.0
             }
+
+
+    # ── NXT-004: Anti-hallucination guardrails ──────────────────────────────
+    
+    def _verify_sources_exist(
+        self,
+        sources_used: List[Dict[str, Any]],
+        available_source_map: Dict[str, Any]
+    ) -> tuple[bool, List[str]]:
+        """
+        Verifica que las fuentes citadas por el LLM existan en source_map.
+        
+        Returns:
+            (all_valid, invalid_ids)
+        """
+        invalid_ids = []
+        
+        for source in sources_used:
+            source_id = source.get("source_id", "")
+            if source_id and source_id not in available_source_map:
+                invalid_ids.append(source_id)
+        
+        return len(invalid_ids) == 0, invalid_ids
+    
+    def _calculate_hallucination_risk(
+        self,
+        confidence: str,
+        sources_used: List[Dict[str, Any]],
+        answer: str,
+        available_source_map: Dict[str, Any]
+    ) -> float:
+        """
+        Calcula el score de riesgo de alucinación (0.0 - 1.0).
+        
+        Factores:
+        - Fuentes inventadas: +0.4 (grave)
+        - Confidence low: +0.3
+        - Confidence medium: +0.1
+        - Sin fuentes: +0.2
+        - Respuesta muy corta (< 50 chars): +0.1
+        
+        Score:
+            0.0 - 0.3: Respuesta confiable ✅
+            0.3 - 0.5: Baja confianza ⚠️
+            0.5 - 1.0: Alta probabilidad de alucinación ❌
+        """
+        risk = 0.0
+        
+        # Factor 1: Fuentes inventadas (GRAVE)
+        all_valid, invalid_ids = self._verify_sources_exist(sources_used, available_source_map)
+        if not all_valid:
+            risk += 0.4
+            logger.warning(
+                "sources_verification_failed",
+                invalid_ids=invalid_ids,
+                msg="LLM cited non-existent sources"
+            )
+        
+        # Factor 2: Confianza baja del LLM
+        if confidence == "low":
+            risk += 0.3
+        elif confidence == "medium":
+            risk += 0.1
+        
+        # Factor 3: Sin fuentes citadas
+        if len(sources_used) == 0:
+            risk += 0.2
+        
+        # Factor 4: Respuesta muy corta (indica vaguedad)
+        if len(answer) < 50:
+            risk += 0.1
+        
+        return min(risk, 1.0)  # Cap at 1.0
+    
+    # ─────────────────────────────────────────────────────────────────────────

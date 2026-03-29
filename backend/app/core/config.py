@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     
     # REF-005: hacer el quality gate de PDF opcional para ahorrar latencia
     enable_pdf_quality_gate: bool = True
+    
+    # NXT-003: OpenSearch configuration para tiers Professional y Enterprise
+    opensearch_enabled: bool = False
+    opensearch_host: str = "localhost"
+    opensearch_port: int = 9200
+    opensearch_use_ssl: bool = False
+    opensearch_verify_certs: bool = False
+    opensearch_username: Optional[str] = None
+    opensearch_password: Optional[str] = None
+    # AWS OpenSearch Serverless / Managed
+    opensearch_use_aws_auth: bool = False
+    opensearch_region: str = "us-east-1"
+    opensearch_serverless: bool = False
 
     # ACT-014: detectar configuraciones incompletas en startup, no en runtime
     @model_validator(mode="after")

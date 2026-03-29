@@ -22,18 +22,54 @@ def get_retrieval_strategy(current_user: dict) -> BaseRetrievalService:
     """
     Patrón Strategy: Decide dinámicamente qué motor vectorial usar según el tenant.
     
-    TODO(NXT-003): Implementar OpenSearchRetrievalService para tier Enterprise.
-    Por ahora, todos los tiers usan FAISS in-memory con persistencia en MongoDB.
-    """
-    tier = current_user.get("tier", "lite")
+    Ref: NXT-003 - OpenSearch para tiers Professional y Enterprise.
     
-    # Todos los tiers usan el mismo servicio por ahora.
-    # La diferenciación por tier se implementará en el sprint siguiente
-    # con OpenSearch k-NN para Enterprise (ver NXT-003 en el plan de acción).
+    Fallback order:
+    1. OpenSearch (if enabled + tier allows)
+    2. FAISS in-memory (always available)
+    """
+    from app.core.config import settings
+    
+    tier = current_user.get("tier", "lite")
+    session_id = current_user.get("current_session_id", "unknown")
+    
+    # Tier Lite: Always FAISS
+    if tier == "lite":
+        logger.info(
+            "retrieval_strategy_selected",
+            tier=tier,
+            strategy="faiss",
+            user=current_user["sub"]
+        )
+        return EmbeddingService()
+    
+    # Tier Professional/Enterprise: Try OpenSearch first
+    if tier in ["professional", "enterprise"] and settings.opensearch_enabled:
+        try:
+            from app.services.retrieval.opensearch_service import OpenSearchRetrievalService
+            service = OpenSearchRetrievalService(session_id=session_id, tier=tier)
+            if service.client:  # Connection successful
+                logger.info(
+                    "retrieval_strategy_selected",
+                    tier=tier,
+                    strategy="opensearch",
+                    session_id=session_id,
+                    user=current_user["sub"]
+                )
+                return service
+        except Exception as e:
+            logger.error(
+                "opensearch_fallback",
+                tier=tier,
+                error=str(e),
+                msg="Falling back to FAISS"
+            )
+    
+    # Fallback: FAISS
     logger.info(
         "retrieval_strategy_selected",
         tier=tier,
-        strategy="faiss_persisted",
+        strategy="faiss_fallback",
         user=current_user["sub"]
     )
     return EmbeddingService()
