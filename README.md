@@ -1,5 +1,9 @@
 # Data-X
 
+[![CI Pipeline](https://github.com/javi2481/data-x/actions/workflows/ci.yml/badge.svg)](https://github.com/javi2481/data-x/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Next.js 15](https://img.shields.io/badge/next.js-15-black)](https://nextjs.org/)
+
 **Plataforma inteligente para el análisis de documentos y datos estructurados.**
 
 Data-X implementa una arquitectura Medallion (Bronze → Silver → Gold) para el procesamiento determinístico de datos con enriquecimiento por IA, siguiendo un enfoque "Docling-first" para el manejo de documentos.
