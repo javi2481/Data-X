@@ -421,18 +421,20 @@ AUDIT_REPORT = {
                     "id": "BUG-010",
                     "title": "Patrón Strategy de retrieval siempre retorna EmbeddingService",
                     "severity": "medium",
+                    "status": "fixed",
+                    "fix_branch": "main",
                     "category": "bug",
                     "file": "backend/app/api/routes/analyze.py",
-                    "line_start": 28,
-                    "line_end": 44,
+                    "line_start": 21,
+                    "line_end": 39,
                     "description": "La función get_retrieval_strategy() siempre retorna EmbeddingService() independientemente del tier. El bloque enterprise tiene el bug del logger (BUG-001) y además retorna EmbeddingService en ambas ramas. El patrón Strategy está implementado pero es un no-op.",
                     "impact": "El código promete diferenciación por tier pero no la entrega. Confusión para futuros desarrolladores. Deuda técnica que crece.",
                     "evidence": "Líneas 28-44: ambas branches de `if tier == \"enterprise\"` retornan `EmbeddingService()`.",
                     "suggested_fix": {
                         "summary": "Limpiar el patrón Strategy para que sea honesto sobre su estado actual",
                         "before": "def get_retrieval_strategy(current_user):\n    tier = current_user.get(\"tier\", \"lite\")\n    if tier == \"enterprise\":\n        # TODO: OpenSearchRetrievalService\n        logger.info(...)  # BUG!\n        return EmbeddingService()\n    logger.info(...)  # BUG!\n    return EmbeddingService()",
-                        "after": "import structlog\nlogger = structlog.get_logger(__name__)\n\ndef get_retrieval_strategy(current_user: dict) -> BaseRetrievalService:\n    # TODO(sprint-X): Implementar OpenSearchRetrievalService para tier enterprise.\n    # Por ahora, todos los tiers usan FAISS in-memory.\n    logger.info(\"retrieval_strategy_selected\", tier=current_user.get(\"tier\", \"lite\"), strategy=\"faiss\")\n    return EmbeddingService()",
-                        "notes": "Resolver BUG-003 primero (índice persistente), luego implementar OpenSearch para enterprise."
+                        "after": "def get_retrieval_strategy(current_user: dict) -> BaseRetrievalService:\n    \"\"\"\n    TODO(NXT-003): Implementar OpenSearchRetrievalService para tier Enterprise.\n    Por ahora, todos los tiers usan FAISS in-memory con persistencia en MongoDB.\n    \"\"\"\n    tier = current_user.get(\"tier\", \"lite\")\n    logger.info(\"retrieval_strategy_selected\", tier=tier, strategy=\"faiss_persisted\", user=current_user[\"sub\"])\n    return EmbeddingService()",
+                        "notes": "Fix aplicado en commit 836b541. If/else redundante eliminado. Código ahora es honesto sobre el comportamiento actual con documentación clara del TODO."
                     }
                 },
                 {
