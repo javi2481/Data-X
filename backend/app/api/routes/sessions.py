@@ -19,6 +19,7 @@ from app.services.schema_validator import SchemaValidator
 from app.services.statistical_tests import StatisticalTestsService
 from app.services.document_chunking_service import DocumentChunkingService
 from app.services.docling_chunking_service import get_docling_chunking_service
+from app.services.ingestion.distributed_strategy import DistributedIngestionService
 from app.services.embedding_service import EmbeddingService
 from app.repositories.mongo import session_repo
 from app.api.dependencies import get_current_user
@@ -39,6 +40,18 @@ schema_validator = SchemaValidator()
 stat_tests_service = StatisticalTestsService()
 chunking_service = DocumentChunkingService()  # Legacy fallback
 docling_chunking_service = get_docling_chunking_service()  # Sprint 1: HybridChunker
+distributed_ingestion_service = DistributedIngestionService()
+
+def get_ingestion_strategy(current_user: dict) -> Any:
+    """
+    Patrón Strategy: Decide entre pipeline local (Docling) o distribuido (IBM Data Prep Kit).
+    """
+    tier = current_user.get("tier", "lite")
+    if tier == "enterprise":
+        import structlog
+        structlog.get_logger(__name__).info("strategy_injection", strategy="distributed_ingestion", user=current_user["sub"])
+        return distributed_ingestion_service
+    return ingest_service
 
 @router.post("", 
     response_model=SessionResponse, 
@@ -126,9 +139,11 @@ async def create_session(
         import time
         start_time = time.time()
         
+        ingestion_strategy = get_ingestion_strategy(current_user)
+        
         try:
             ingest_result = await asyncio.wait_for(
-                ingest_service.ingest_file(
+                ingestion_strategy.ingest_file(
                     file_bytes=content,
                     filename=file.filename,
                     content_type=file.content_type or "text/csv",
@@ -302,7 +317,7 @@ async def create_session(
         chunks_saved = await session_repo.save_document_chunks(session_id, document_chunks)
 
         hybrid_embedding_service = EmbeddingService()
-        hybrid_embedding_service.index_hybrid_sources(
+        await hybrid_embedding_service.index_hybrid_sources(
             findings=[f.model_dump() for f in findings],
             chunks=document_chunks,
         )

@@ -35,7 +35,7 @@
 3. **Finding as Unit of Value**: Each finding has What/So What/Now What structure
 4. **Docling-first Ingestion**: Unified pipeline for CSV, XLSX, PDF with fallback to pandas
 5. **Pandera Schema Validation**: Automatic schema validation in Silver layer
-6. **Deterministic + Statistical**: Profiling, validation, and statistical tests with `pingouin`
+6. **Deterministic + Statistical**: Profiling, validation, and statistical tests with `SciPy` and `statsmodels`
 7. **LiteLLM Router**: LLM orchestration with fallback chain, local cache, cost tracking
 8. **Tests-first**: pytest suite for pipeline integrity
 9. **API-first**: System works independently via `/api/*` endpoints
@@ -71,8 +71,8 @@ The user doesn't need to know what's in their data — they need to know what it
 ### Backend
 
 - Python 3.11+ / FastAPI / Pydantic v2 / Uvicorn
-- Motor (async MongoDB driver) → MongoDB Atlas
-- Pandas, Pandera, SciPy, statsmodels, pingouin
+- Motor (async MongoDB driver) → MongoDB
+- Pandas, Pandera, SciPy, statsmodels
 - Docling (unified ingestion)
 - LiteLLM (LLM gateway)
 - OpenTelemetry + structlog
@@ -416,8 +416,8 @@ de los prompts cuando se trabaje con librerías específicas.
 - Junie: Disponible via CLI con `npx ctx7`
 
 ### Librerías indexadas
-Backend: fastapi, pydantic, motor, litellm, docling, pandera, pingouin,
-         sentence-transformers, faiss
+Backend: fastapi, pydantic, motor, litellm, docling, pandera,
+         sentence-transformers, faiss, scipy, ydata-profiling
 Frontend: next.js, shadcn/ui, recharts, tailwindcss, jspdf
 
 ---

@@ -47,6 +47,22 @@ class IngestService:
 
         # Intentar con Docling primero
         if DOCLING_AVAILABLE and (is_pdf or is_excel or is_docx):
+            
+            # Integración OpenCV Quality Gate (Fase 7)
+            if is_pdf:
+                from app.services.opencv_pipeline import OpenCVPipeline
+                cv_pipeline = OpenCVPipeline()
+                images = cv_pipeline.pdf_to_cv2_images(file_bytes)
+                if images:
+                    # Evaluamos la primera página como muestra representativa
+                    qg_result = cv_pipeline.quality_gate_image(images[0])
+                    if not qg_result["passed"]:
+                        logger.warning("ingest_rejected_vision_quality", variance=qg_result["variance"])
+                        raise ValueError(
+                            f"El documento fue rechazado por baja calidad visual (borroso o fuera de foco). "
+                            f"Nivel de nitidez detectado: {round(qg_result['variance'], 2)}"
+                        )
+                        
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                     tmp.write(file_bytes)

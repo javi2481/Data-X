@@ -1,96 +1,16 @@
-# Roadmap
+Fase 10 — Infraestructura Multi-Tier y Patrón Strategy (Semanas 28-31) ← **NUEVO**
+*Objetivo: Desacoplar la infraestructura de ingesta y búsqueda para soportar el modelo de negocio B2C (Lite) vs B2B (Enterprise).*
 
-## Punto de partida real
-
-Data-X ya cuenta con:
-- auth y sesiones
-- ingestión de CSV/XLSX/PDF
-- pipeline Bronze → Silver → Gold
-- findings y charts
-- reportes y export
-- query panel
-- frontend usable
-
-No estamos arrancando de cero.
-
-## Objetivo del roadmap
-
-Recentrar el producto en el documento estructurado y completar la reconversión a un sistema Docling-first.
-
-## Fase 0 — Hardening
-
-### Objetivo
-Cerrar deuda técnica que afecta confianza y estabilidad.
-
-### Trabajo
-- JWT/config segura
-- Mongo con timeout/pool
-- polling con backoff
-- export JSON con Blob
-- sincronización de explanations
-- más tests críticos
-
-## Fase 1 — Bronze documental real
-
-### Objetivo
-Persistir el documento estructurado como activo principal.
-
-### Trabajo
-- guardar `DoclingDocument`
-- guardar todas las tablas
-- guardar narrativa
-- guardar metadata estructural
-- preparar referencias de provenance
-
-## Fase 2 — RAG documental real
-
-### Objetivo
-Permitir preguntas sobre documento, no solo sobre findings.
-
-### Trabajo
-- `HybridChunker`
-- `doc_chunks`
-- embeddings de chunks
-- índice combinado findings + chunks
-- actualizar `/api/analyze`
-
-## Fase 3 — Provenance verificable
-
-### Objetivo
-Que cada hallazgo importante pueda rastrearse al origen.
-
-### Trabajo
-- `source_location`
-- referencias de página/sección/tabla/chunk
-- panel de evidencia
-- findings enlazables a origen
-
-## Fase 4 — UX Docling-first
-
-### Objetivo
-Hacer visible el valor diferencial del plano documental.
-
-### Trabajo
-- document explorer
-- selector de tabla
-- mejor copy de uploader/progreso
-- preguntas sugeridas
-- evidencia visible en UI
-
-## Fase 5 — Escalabilidad operativa
-
-### Objetivo
-Aislar procesamiento pesado cuando el uso lo exija.
-
-### Trabajo
-- jobs o workers
-- colas
-- posible desacople de Docling
-- evaluar `docling-serve` solo si hay necesidad real
-
-## Qué no entra ahora
-
-- grafos semánticos
-- complejidad enterprise prematura
-- dashboards custom tipo BI generalista
-- microservicios por moda
+- [ ] **Core Architecture:** Implementar Patrón Strategy en el backend de FastAPI.
+- [ ] **Capa de Búsqueda (Retrieval Strategy):**
+  - [ ] Interfaz base: `BaseRetrievalService`
+  - [ ] Implementación 1: `FaissRetrievalService` (Mantiene el sistema actual en memoria para B2C).
+  - [ ] Implementación 2: `OpenSearchRetrievalService` (Búsqueda híbrida para B2B).
+  - [ ] Inyección de dependencias dinámica en `/api/analyze` basada en el `tenant_id` y su plan.
+- [ ] **Capa de Ingesta Masiva (Ingestion Strategy):**
+  - [ ] Interfaz base: `BaseIngestionOrchestrator`
+  - [ ] Implementación 1: `StandardIngestionService` (Uso actual de DoclingRouter + ARQ/Redis).
+  - [ ] Implementación 2: `DistributedIngestionService` (Integración de **IBM Data Prep Kit** para procesamiento por lotes masivos, redacción PII y paralelización con Ray).
+- [ ] **Optimización Cognitiva (LLM):**
+  - [ ] Actualizar *System Prompts* de PydanticAI implementando técnica **CoD (Chain of Drafts)** para reducir latencia y consumo de tokens.
+  - [ ] Implementar técnica **AoT (Atom of Thoughts)** en las *Tools* del agente para razonamiento seguro de datos espaciales y metadatos de OpenSearch.

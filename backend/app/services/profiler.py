@@ -3,6 +3,11 @@ import numpy as np
 from pandas import DataFrame
 import structlog
 import time
+try:
+    from ydata_profiling import ProfileReport
+    YDATA_AVAILABLE = True
+except ImportError:
+    YDATA_AVAILABLE = False
 
 logger = structlog.get_logger(__name__)
 
@@ -73,3 +78,21 @@ class ProfilerService:
         duration = time.time() - start_time
         logger.info("profiling_complete", duration_sec=round(duration, 3))
         return profile_data
+
+    def compare(self, df_current: DataFrame, df_baseline: DataFrame) -> dict:
+        """
+        Utiliza ydata-profiling para comparar dos DataFrames y calcular métricas
+        de Data Drift de forma determinística (reemplaza a Evidently AI).
+        """
+        if not YDATA_AVAILABLE:
+            logger.warning("ydata_profiling_not_available")
+            return {}
+            
+        logger.info("drift_comparison_start")
+        
+        # minimal=True para acelerar, solo calculamos lo base para el drift
+        prof_base = ProfileReport(df_baseline, title="Baseline", minimal=True)
+        prof_curr = ProfileReport(df_current, title="Current", minimal=True)
+        
+        comparison = prof_base.compare(prof_curr)
+        return comparison.get_description()

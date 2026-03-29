@@ -204,7 +204,7 @@ Respondé SOLO con un objeto JSON con esta estructura exacta:
             logger.error("llm_query_failed", error=str(e))
             return {"answer": f"Error al procesar la consulta: {str(e)}", "cost_usd": 0.0}
 
-    async def generate_recommendations(self, findings: list) -> list[str]:
+    async def generate_recommendations(self, findings: list) -> dict:
         """
         Genera una lista de 3-5 recomendaciones accionables basadas en los findings.
         """
@@ -223,7 +223,10 @@ Respondé SOLO con un objeto JSON con esta estructura exacta:
                 recs.append("Investigar los patrones detectados para validar hipótesis de negocio.")
                 recs.append("Los datos están en buena forma general, pero se recomienda monitoreo continuo.")
             
-            return recs[:5]
+            return {
+                "recommendations": recs[:5],
+                "cost_usd": 0.0
+            }
 
         try:
             findings_text = "\n".join([
@@ -247,7 +250,16 @@ Respondé SOLO con la lista de recomendaciones, una por línea, empezando con un
             content = response.choices[0].message.content.strip()
             # Parsear líneas que empiecen con guión o número
             lines = [line.strip().lstrip('- ').lstrip('123456789. ') for line in content.split('\n') if line.strip()]
-            return lines[:5]
+            cost = completion_cost(completion_response=response) or 0.0
+            
+            return {
+                "recommendations": lines[:5],
+                "cost_usd": cost,
+                "model": getattr(response, "model", settings.litellm_model)
+            }
         except Exception as e:
             logger.error("llm_recommendations_failed", error=str(e))
-            return ["Revisar los hallazgos detallados en el reporte."]
+            return {
+                "recommendations": ["Revisar los hallazgos detallados en el reporte."],
+                "cost_usd": 0.0
+            }

@@ -1,75 +1,30 @@
-# Product Focus
+# Product Focus — Data-X
+*Última actualización: Marzo 2026*
+
+## Qué es Data-X
+Plataforma de análisis conversacional determinista. El usuario sube documentos empresariales y hace preguntas en lenguaje natural, recibiendo análisis estadístico real y verificable. **El cálculo es interno. La interpretación es el producto.**
 
 ## Posicionamiento
+**"El único analizador que te muestra cómo llegó a cada conclusión, adaptado a tu escala."**
 
-Data-X no es solo una herramienta para analizar datasets.
+Data-X ocupa una categoría nueva: **Inferencia Estadística Determinística con Soporte Documental No Estructurado.** Es una herramienta accesible para individuos y PyMEs, pero lo suficientemente robusta para escalar al entorno Enterprise.
 
-Data-X es una plataforma que transforma **documentos y datasets** en análisis verificables, usando un subsistema documental capaz de preservar estructura, contexto y evidencia.
+- No es un chatbot (no adivina números).
+- No es una caja negra (brinda provenance y calidad geométrica).
 
-## Promesa principal
+## Arquitectura Multi-Tier (Segmentación Tecnológica)
+Para asegurar márgenes de rentabilidad (Unit Economics), Data-X adapta su motor interno según el plan del cliente, operando bajo un **Patrón Strategy** en el backend.
 
-**Tus archivos tienen respuestas.  
-Data-X te las encuentra y te muestra de dónde salen.**
+| Característica | Tier "Lite" (Free / PyMEs) | Tier "Enterprise" (Corp / API) |
+| :--- | :--- | :--- |
+| **Casos de Uso** | 10-50 PDFs/mes, consultas simples. | +50.000 documentos, manuales, históricos. |
+| **Motor de Ingesta** | `StandardIngestionService` (DoclingRouter + ARQ/Redis). | `DistributedIngestionService` (IBM Data Prep Kit + Ray/Spark). |
+| **Motor RAG** | `FaissRetrievalService` (Caché en memoria). | `OpenSearchRetrievalService` (Motor Distribuido). |
+| **Tipo de Búsqueda** | Búsqueda Vectorial Pura. | Búsqueda Híbrida (Vectores + BM25 Léxico). |
 
-## Diferencial
-
-La mayoría de herramientas:
-- responden sin evidencia fuerte
-- tratan PDFs como texto plano
-- pierden estructura
-- no conservan provenance
-
-Data-X debe ganar porque:
-- preserva estructura documental
-- calcula antes de explicar
-- responde con evidencia
-- permite consultar documentos reales, no solo tablas planas
-
-## Usuarios
-
-### Laura
-Quiere entender ventas y archivos sin saber estadística.
-
-### Carlos
-Quiere analizar PDFs/tablas de negocio sin depender de procesos manuales.
-
-### Valentina
-Quiere rapidez, claridad y capacidad de compartir hallazgos confiables.
-
-### Martín
-Quiere análisis defendibles y trazables al documento original.
-
-## Principio no negociable
-
-**El cálculo es interno.  
-La interpretación es el producto.**
-
-## Qué debe sentir el usuario
-
-1. el sistema entendió su archivo
-2. encontró algo útil
-3. puede hacer preguntas
-4. cada hallazgo tiene respaldo
-5. el PDF/documento ya no es un bloqueo
-
-## Lo que no debe pasar
-
-- findings dominados por jerga estadística
-- UI orientada a columnas antes que a valor
-- PDF tratado como un formato secundario
-- respuestas sin fuente
-- narrativa documental invisible
-
-## Copy rector
-
-Hablar del efecto:
-- “cada hallazgo tiene evidencia”
-- “tu PDF ahora se puede consultar”
-- “cada número se puede verificar”
-
-No hablar primero del mecanismo:
-- embeddings
-- pipelines
-- chunkers
-- parsers
-- routers
+## Los 5 diferenciales reales
+1. **Calidad de Extracción Adaptable:** Desde un Docling embebido hasta clústeres de ingesta masiva con IBM Data Prep Kit.
+2. **El LLM nunca computa:** Código duro (Pandas, OpenCV, SciPy) precalcula; PydanticAI orquesta y narra.
+3. **Seguridad Zero Trust:** SensitiveDataGuard + FraudGuard (Forense PDF, Visual y Numérico) antes de que el LLM vea el dato.
+4. **Transparencia Técnica Auditable:** Panel con stats crudas, contexto del LLM, y score de confianza validado.
+5. **Aislamiento Corporativo:** OpenSearch + MongoDB multi-tenant aseguran que los datos nunca se crucen.

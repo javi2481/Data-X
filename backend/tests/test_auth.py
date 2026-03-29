@@ -2,13 +2,15 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.db.client import db
+from app.core.rate_limit import limiter
 
 @pytest.fixture(autouse=True)
 async def setup_db():
-    """Conectar a la DB y limpiar colección de usuarios."""
+    """Conectar a la DB, limpiar colección de usuarios y resetear rate limiter."""
     await db.connect_to_db()
     if db.db is not None:
         await db.db.users.delete_many({})
+    limiter._limiter.storage.reset()
     yield
     await db.close_db_connection()
 

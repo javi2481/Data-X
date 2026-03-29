@@ -48,13 +48,14 @@ def test_document_chunking_builds_narrative_and_table_chunks():
     assert any(c["source_type"] == "section" for c in chunks)
     assert any(c["source_type"] == "table" for c in chunks)
 
-def test_index_hybrid_sources_and_search():
+@pytest.mark.asyncio
+async def test_index_hybrid_sources_and_search():
     service = EmbeddingService()
     findings = [{"finding_id": "f_1", "title": "Ventas altas", "what": "Suba en ventas", "so_what": "Mejor margen"}]
     chunks = [{"chunk_id": "chunk_1", "source_id": "table_0", "text": "Tabla de ventas por mes", "snippet": "ventas por mes", "provenance": {"table_id": "table_0"}}]
-    service.index_hybrid_sources(findings=findings, chunks=chunks)
+    await service.index_hybrid_sources(findings=findings, chunks=chunks)
     assert service.index is not None
     assert len(service.source_map) == 2
-    results = service.search_hybrid_sources("ventas", top_k=2)
+    results = await service.search_hybrid_sources("ventas", top_k=2)
     assert len(results) >= 1
     assert results[0]["source_type"] in ["finding", "chunk"]
