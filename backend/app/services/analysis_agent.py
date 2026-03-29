@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, RunContext, ModelRetry
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
+import re
+import json
 
 from app.core.config import settings
 from app.schemas.profiling import ProfilingSummary
@@ -41,6 +43,49 @@ Aplica la técnica CoD (Chain of Drafts) y AoT (Atom of Thoughts) para tu razona
 Basa tus conclusiones ESTRICTAMENTE en los resultados de las tools proporcionadas. 
 NUNCA computes datos directamente (ni sumas, ni promedios), delega la búsqueda a tus tools."""
 )
+
+@analysis_agent.output_validator
+def enforce_no_hallucinated_metrics(ctx: RunContext[AnalysisDeps], result: AnalysisResponse) -> AnalysisResponse:
+    """
+    Guardrail: Intercepta la respuesta final y verifica que las métricas o números
+    mencionados provengan estrictamente del contexto. Si el LLM inventó o calculó
+    un número nuevo, fuerza una re-evaluación (Reflection).
+    """
+    response_text = result.answer + " " + " ".join(result.key_findings)
+    # Extraer todos los números (enteros o decimales) de la respuesta
+    numbers = set(re.findall(r'\b\d+(?:[.,]\d+)?\b', response_text))
+    
+    suspicious_numbers = []
+    for n_str in numbers:
+        clean_n = n_str.replace(',', '.')
+        try:
+            val = float(clean_n)
+            # Ignorar números menores a 12 (conteos básicos en lenguaje natural) y años (1990-2100)
+            if val > 12 and not (1990 <= val <= 2100 and n_str.isdigit()):
+                suspicious_numbers.append(n_str)
+        except ValueError:
+            pass
+            
+    if not suspicious_numbers:
+        return result
+        
+    # Volcar todo el contexto determinístico conocido a un string de validación
+    known_context = json.dumps(ctx.deps.dataset_meta)
+    if ctx.deps.findings: known_context += json.dumps(ctx.deps.findings)
+    if ctx.deps.drift_report: known_context += json.dumps(ctx.deps.drift_report)
+    if ctx.deps.fraud_report: known_context += json.dumps(ctx.deps.fraud_report)
+    if ctx.deps.profiling_summary: known_context += str(ctx.deps.profiling_summary)
+    for source in result.sources_used: known_context += " " + str(source.text)
+        
+    for num in suspicious_numbers:
+        if num not in known_context:
+            raise ModelRetry(
+                f"GUARDRAIL ERROR: Has incluido el número/métrica '{num}' que no existe en "
+                f"los datos de origen ni en los fragmentos citados. REGLA DE ORO: NO DEBES COMPUTAR NI "
+                f"INVENTAR MÉTRICAS. Reformula la respuesta usando estrictamente los datos provistos."
+            )
+            
+    return result
 
 @analysis_agent.tool
 async def search_documents(ctx: RunContext[AnalysisDeps], query: str, top_k: int = 5) -> List[Dict[str, Any]]:

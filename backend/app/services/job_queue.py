@@ -11,8 +11,11 @@ class JobQueueService:
     Permite encolar el procesamiento de documentos de forma asíncrona.
     """
     def __init__(self):
-        # En producción, estos valores deberían venir de app.core.config.settings
-        self.redis_settings = RedisSettings(host='localhost', port=6379)
+        from app.core.config import settings as _settings
+        self.redis_settings = RedisSettings(
+            host=_settings.redis_host,
+            port=_settings.redis_port,
+        )
         self.pool = None
 
     async def connect(self):

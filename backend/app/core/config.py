@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     otel_service_name: str = "datax-backend"
     otel_exporter_otlp_endpoint: Optional[str] = "http://localhost:4317"
     
+    # Redis (ARQ job queue)
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+
     # JWT config para Corte 5
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"

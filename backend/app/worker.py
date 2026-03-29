@@ -1,6 +1,7 @@
 import structlog
 from arq.connections import RedisSettings
 from arq import Worker
+from app.core.config import settings as _cfg
 from app.repositories.mongo import session_repo
 from app.db.client import db
 # Importar las dependencias reales del pipeline
@@ -53,7 +54,7 @@ async def run_pipeline_task(ctx, session_id: str, file_path: str, filename: str,
 class WorkerSettings:
     """Configuración inyectada automáticamente cuando se corre el worker de ARQ."""
     functions = [run_pipeline_task]
-    redis_settings = RedisSettings(host='localhost', port=6379)
+    redis_settings = RedisSettings(host=_cfg.redis_host, port=_cfg.redis_port)
     max_tries = 3  # Si falla (ej: error temporal de Docling), reintenta hasta 3 veces con backoff exponencial
     job_timeout = 600  # 10 minutos máximo por documento para evitar colgar el worker
     
