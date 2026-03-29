@@ -1,18 +1,22 @@
 [
   {
     "content": "Phase 2: Get design guidelines from design agent",
-    "status": "in_progress"
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Install dependencies (recharts, syntax-highlighter, framer-motion)",
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build FastAPI backend with report data + endpoints",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Build React frontend with interactive report viewer",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: End-to-end testing with testing agent",
-    "status": "pending"
+    "status": "in_progress"
   }
 ]

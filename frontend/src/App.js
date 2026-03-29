@@ -1,54 +1,115 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Dashboard from './components/Dashboard';
+import BugsSection from './components/BugsSection';
+import RefactoringSection from './components/RefactoringSection';
+import AIMLSection from './components/AIMLSection';
+import ActionPlanSection from './components/ActionPlanSection';
+import ArchitectureSection from './components/ArchitectureSection';
+import Sidebar from './components/Sidebar';
+import LoadingScreen from './components/LoadingScreen';
+import './App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
-const Home = () => {
-  const helloWorldApi = async () => {
+export default function App() {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeSection, setActiveSection] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const fetchReport = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+      setLoading(true);
+      setError(null);
+      const res = await fetch(`${BACKEND_URL}/api/report`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setReport(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
+
+  const getSectionData = (key) => {
+    if (!report) return null;
+    return report.sections.find(s => s.key === key);
+  };
+
+  const handleExport = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/report/export.md`);
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'data-x-audit-report.md';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed', err);
     }
   };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  if (loading) return <LoadingScreen />;
 
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
+  if (error) return (
+    <div className="error-screen" data-testid="error-screen">
+      <div className="error-content">
+        <div className="error-icon">⚠️</div>
+        <h2>Error al cargar el reporte</h2>
+        <p>{error}</p>
+        <button onClick={fetchReport} className="retry-btn" data-testid="retry-btn">
+          Reintentar
+        </button>
+      </div>
     </div>
   );
-};
 
-function App() {
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'dashboard': return <Dashboard report={report} onSectionChange={setActiveSection} />;
+      case 'architecture': return <ArchitectureSection data={getSectionData('architecture')} />;
+      case 'bugs': return <BugsSection data={getSectionData('bugs')} />;
+      case 'refactoring': return <RefactoringSection data={getSectionData('refactoring')} />;
+      case 'ai_ml': return <AIMLSection data={getSectionData('ai_ml')} />;
+      case 'action_plan': return <ActionPlanSection data={getSectionData('action_plan')} />;
+      default: return <Dashboard report={report} onSectionChange={setActiveSection} />;
+    }
+  };
+
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+    <div className="app-root" data-testid="app-root">
+      <Sidebar
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        meta={report?.meta}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+        onExport={handleExport}
+      />
+      <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeSection}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+            className="section-wrapper"
+          >
+            {renderSection()}
+          </motion.div>
+        </AnimatePresence>
+      </main>
     </div>
   );
 }
-
-export default App;
